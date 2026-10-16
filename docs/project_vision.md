@@ -1,246 +1,171 @@
 # Synqaro
 
-**An AI-native engineering and control platform for complex distributed systems**
+**An AI-native platform for engineering and controlling complex distributed systems**
 
-**Project vision and preliminary design principles**  
-**Version:** 0.6  
-**Date:** October 15, 2026  
-**Status:** Concept document for technical discussion, collaboration, and funding exploration. No architecture or technology stack has been approved.
+**Project vision and preliminary engineering principles**  
+**Version:** 0.7  
+**Date:** October 16, 2026  
+**Status:** Concept and research proposal. The architecture, technology stack, partnerships, and deployment plans are not yet approved.
 
 ---
 
-## 1. Vision: one platform, an entire engineering lifecycle
+## 1. What Synqaro is
 
-Synqaro is a proposed open-source, AI-native platform for **developing, integrating, operating, testing, diagnosing, and maintaining complex distributed systems**. Its intended applications range from scientific research facilities to industrial installations. Instead of providing a large, prescriptive framework for one class of machinery, Synqaro aims to offer a small, dependable **control core** and a consistent **AI-assisted engineering environment**. Application-specific operational logic would be supplied by independently developed **operational layers**.
+**Synqaro is a proposed AI-native engineering and control platform designed for a world in which autonomous AI agents become primary participants in developing, operating, diagnosing, and evolving complex distributed systems.** Rather than adding an AI assistant to a conventional control framework, Synqaro aims to make **the entire system lifecycle accessible to agents by design**: from device and firmware specifications through software implementation, simulation, integration, operations, incident analysis, corrective changes, and subsequent verification.
 
-The central idea is simple: when devices, software services, firmware, configurations, telemetry, tests, and documentation are connected through clear, machine-readable contracts, both humans and AI agents can understand and work with the system far more effectively. An agent should be able to help design an interface with a firmware team, validate its behavior against a simulator and a real device, guide an operator through a procedure, investigate a failure, and prepare a tested software correction. These activities should form a coherent lifecycle rather than disconnected manual workflows.
+Its defining proposition is **a continuous, verifiable connection between what a system is supposed to do, what has been implemented, what can be simulated and tested, and what actually happens in operation**. Agents should be able to navigate that connection and act on it, subject to explicit permissions and independent safety and acceptance mechanisms. A fault reported by an operator should be traceable to evidence, reproducible where possible, and actionable as a tested change rather than disappearing into disconnected logs, repositories, teams, and undocumented assumptions.
 
-Synqaro is intended to remain useful without AI. Its control functions, safety checks, and essential operator interfaces must behave deterministically and remain operable when AI services are unavailable. AI should enhance engineering and operations, not become a prerequisite for safe control.
+Synqaro is intended for scientific facilities, industrial plants, and other installations composed of heterogeneous devices and software. A **small, domain-independent control core** would expose shared mechanisms; each installation would supply its own **operational layer**. The agentic engineering environment, contracts, simulation methods, diagnostic mechanisms, and development practices would remain common across applications.
 
-The project's ambition is broad, but its implementation must be incremental: **build the smallest useful core, validate it in realistic environments, and generalize only where evidence justifies doing so.**
+The innovations Synqaro aims to demonstrate are therefore not basic device communication or telemetry, which established systems already provide, but the following combination:
 
-## 2. Why Synqaro matters: the main expected advantages
+1. **Agents as first-class engineers and operators.** Agents receive structured, permissioned access to components, contracts, repositories, test environments, system state, historical evidence, and operational tools. They can propose and, where authorized, execute work across the lifecycle instead of merely generating isolated code snippets or answering questions.
+2. **A closed engineering-to-operations loop.** Requirements, device protocols, implementations, simulators, tests, deployments, telemetry, incidents, and fixes remain linked and traceable. Findings from operations can feed directly into reproducible tests and improvements.
+3. **Agent-ready verification rather than trust in generated code.** Explicit contracts, simulator-first development, fault injection, conformance checks against real devices, regression tests, and controlled delivery make autonomous engineering testable and progressively extensible.
+4. **One generic foundation, many application-specific operating models.** A common control core and agentic lifecycle can support distinct operational layers, avoiding the assumption that a radio telescope, a gravitational-wave observatory, and an industrial plant must share the same operational procedures.
+5. **Progressively increasing autonomy without surrendering deterministic control.** More engineering and appropriate operational work can be delegated to agents as their performance and verification improve, while essential control, hard limits, interlocks, and safe fallback behavior remain independent of probabilistic AI services.
 
-The distinctive promise is not an isolated feature. It is the **combination** of a minimal control architecture, contracts, systematic simulation, traceable diagnostics, and AI involvement throughout the lifecycle.
+**The ambition is not simply to write a new control framework faster using AI. It is to build a control and engineering platform that AI agents can understand, extend, test, repair, and help operate throughout its lifetime.** This is a research and engineering objective, not an already demonstrated advantage or a claim that no related projects exist.
 
-### Five principal strengths
+## 2. Why a new approach is timely
 
-1. **A substantially simpler control architecture.** Small components, clear APIs, few dependencies, and independent execution and testing should reduce infrastructure overhead. Each logical component need not be a separate process or container. Domain-specific workflows should not dictate the core's design.
-2. **Reliability engineered from the device boundary upwards.** Versioned contracts, reusable communication libraries, simulators, fault injection, and tests shared with real hardware should expose faults early. Errors should remain traceable from firmware and communication layers to the user-facing diagnosis. This is a strategy for *verifiable robustness*, not a claim of proven superiority before validation.
-3. **An AI-native lifecycle encompassing hardware and software teams.** Agents could assist with requirements, protocol design, firmware review, component development, test generation, cross-repository compatibility, issue diagnosis, fixes, documentation, and maintenance. This would reduce bottlenecks caused by fragmented knowledge and specialist-only workflows.
-4. **Natural-language operations and on-demand capabilities.** Users could converse with an agent to configure a facility, plan operations, inspect live or historical measurements, ask why something failed, obtain graphical analyses, and request new tools. Where an appropriate tool does not exist, an agent could create and test it in an isolated environment and potentially publish a reusable version.
-5. **Lower lifecycle effort and longer-term adaptability.** Reproducible tests, simpler startup, fewer unnecessary abstractions, reusable components, automated maintenance, and progressively greater agent autonomy could reduce development and operational costs over decades. Savings are a central motivation; their magnitude and the delivered reliability remain outcomes to establish in the demonstrators.
+Conventional control frameworks were largely designed for engineering organizations in which people write and maintain application code, manually interpret distributed failures, and integrate devices through specialized knowledge of the runtime and its tooling. Some of these frameworks are mature, reliable, and well supported; their fundamental capabilities are not obsolete. **What may be becoming outdated is the assumption that humans must be the principal integrators of every software change and every diagnostic investigation.**
 
-Additional expected strengths include faster onboarding, more consistent firmware integration, reduced reliance on undocumented knowledge, clear incident-to-fix traceability, external collaboration through open source, and applicability to multiple industries through separately designed operational layers.
+Software engineering is changing rapidly. AI assistants have evolved from code completion to agents that can inspect repositories, edit multiple files, run tests, and prepare pull requests. The peer-reviewed **SWE-agent** work (NeurIPS 2024) established the importance of interfaces designed specifically for software-engineering agents. The **2025 DORA report**, based on responses from nearly 5,000 technology professionals, found widespread AI adoption and emphasized that high-quality platforms, loosely coupled systems, and rapid feedback loops matter more than simply supplying AI tools. A **2026 empirical study of GitHub projects** documented rapidly growing adoption of coding agents, extending beyond simple autocomplete. [1–3]
 
-Synqaro should not claim that none of its techniques exists elsewhere. Contracts, simulation, event systems, fault injection, and AI coding tools already exist. The research proposition is whether their **coherent, lightweight, AI-native integration** can yield a better lifecycle for real distributed-control installations.
+These findings do **not** establish that agents already outperform expert engineers on every task, or that human coding will disappear on a particular schedule. Productivity effects depend on the task and environment, and evidence remains mixed; a 2026 METR update explicitly warned against overinterpreting its productivity estimates. [4] Nevertheless, it is reasonable to design a long-lived platform for a future in which agents undertake **most routine implementation and a growing share of complex engineering work**, with humans increasingly focused on objectives, requirements, review, acceptance, and accountability.
 
-## 3. Architectural concept: common core, replaceable operational layers
+This transition exposes weaknesses that are especially costly in long-lived control systems: opaque dependencies, device behavior known only to a few specialists, poor isolation of failures, incomplete simulations, tests that require a large runtime or physical equipment, and fragmented evidence between firmware and application software. Such weaknesses also limit agent effectiveness: a capable agent cannot reliably diagnose what the system does not describe or safely validate what the system cannot test.
 
-The leading architectural hypothesis is a deliberate separation between **generic mechanisms** and **domain-specific operations**.
+Synqaro's response is to **design for agentic engineering and verifiable operation from the beginning**. Simplicity, observable behavior, explicit interfaces, simulations, and failure provenance are not secondary conveniences. They are the prerequisites for reliable delegation to agents and for more maintainable systems regardless of whether AI is currently available.
 
-### Common control core
+*Research context:* [1] [SWE-agent, NeurIPS 2024](https://proceedings.neurips.cc/paper_files/paper/2024/hash/5a7c947568c1b1328ccc5230172e1e7c-Abstract-Conference.html); [2] [DORA State of AI-assisted Software Development, 2025](https://dora.dev/research/2025/dora-report/); [3] [Robbes et al., "Agentic Much? Adoption of Coding Agents on GitHub," ACM TOSEM, 2026](https://doi.org/10.1145/3822180); [4] [METR, developer-productivity research update, February 2026](https://metr.org/blog/2026-02-24-uplift-update/).
 
-The Synqaro core should know about components and their declared capabilities, commands, parameters, measurements, states, events, errors, and permissions. It should not need to understand telescopes, interferometers, industrial production, receivers, or scientific observing schedules.
+## 3. The platform boundary: core, operational layers, and devices
 
-Candidate common capabilities are:
+The central architectural hypothesis is to separate **generic control mechanisms** from **application-specific operational behavior**.
 
-- Component discovery and interface/contract descriptions.
-- Invocation and tracking of commands, including long-running operations.
-- Current-state and event access, with consistent timestamps and validity information.
-- Structured telemetry and access to historical data through interchangeable services.
-- Error identity, correlation, provenance, and diagnostic reporting across boundaries.
-- Configuration validation, component-level operating limits, and suitable common safety mechanisms.
-- Authorization hooks and auditable actions, including actions initiated by agents.
-- Straightforward local execution, simulation, testing, and deployment.
+**The core** should expose an intelligible and uniform model of components and their declared capabilities, commands, parameters, states, measurements, events, errors, and permissions. It should support communication, command tracking, monitoring of current state, access to historical telemetry, structured diagnostics, configuration, and authorization through simple, documented interfaces. These are expected foundations of a modern control system, **not Synqaro's claimed innovations by themselves**. We should improve their simplicity, observability, fault isolation, and independent testability where possible rather than merely reimplementing features found in existing frameworks.
 
-These are **candidate responsibilities**, not a decision to implement all of them inside one runtime. Optional services and libraries may be preferable to a larger mandatory core. The design must distinguish logical components from processes, containers, services, and physical devices.
+The core must not know what an astronomical observation, interferometer lock acquisition, or industrial production cycle means. Nor should the core become a single mandatory monolith: the design should favor a minimal runtime with optional common services and libraries where that reduces dependencies. A logical component is not necessarily a separate process, service, deployment container, or physical device. Components should be straightforward to start, inspect, simulate, and test independently.
 
-### Domain-specific operational layers
+**Operational layers** implement domain-specific coordination above these common capabilities. A radioastronomy layer might manage receiver/backend setup, antenna tracking, and observation schedules. Another layer could coordinate an industrial process or supervise suitable subsystems of a gravitational-wave facility. Each can be implemented or extended with agent assistance because its underlying components, capabilities, contracts, and tests are discoverable. Different sites may reuse one operational layer with different configurations and different implementations of the same device interface.
 
-Each installation defines its own operational layer on top of the core. This layer interprets facility-specific concepts and coordinates devices, for example:
+The boundary should not force each operational layer to reinvent generic mechanisms. Shared optional tools for asynchronous commands, sequencing, cancellation, timeouts, state machines, and recovery may prove valuable; **their mechanism belongs in reusable services, while domain-specific sequencing rules remain in the operational layer**. The right boundary is an empirical design decision for the prototypes, not a fixed inheritance hierarchy.
 
-- **Radio telescopes:** receiver/backend configuration, antenna positioning and tracking, observation scheduling, and observatory-specific workflows.
-- **Gravitational-wave facilities:** supervisory coordination of selected subsystems, operational sequencing, health monitoring, and maintenance workflows.
-- **Industrial installations:** production sequences, equipment coordination, process monitoring, and plant-specific operating procedures.
+**Device-facing components and adapters** connect declared interfaces to actual firmware, controllers, PLCs, sensors, actuators, or external systems. A stable contract may be implemented by several different devices. Where source code is available, the agentic environment may also examine firmware and related tests; otherwise it must work from approved protocols and observed conformance.
 
-The operational layer defines *what the installation does*; the core offers reusable ways to communicate with, observe, test, and manage its components. Generic sequence execution, cancellation, timeouts, retries, and state-machine mechanisms might be shared as **optional building blocks** where they demonstrably remove duplication. Synqaro must not force every application into one universal orchestration model.
+Finally, agents should be **first-class clients** of the same documented, permissioned capabilities used by conventional applications. Machine-readable metadata and discoverable tools are essential. An agent-facing adapter such as MCP may be useful, but should not dictate the core's internal transport or require AI to be online for the installation to function.
 
-Device adapters and hardware-facing components sit beneath this distinction. Their software interfaces should be stable and explicit, while individual devices and firmware implementations remain replaceable. One interface may have several implementations selected by installation configuration.
+## 4. The engineering method: contracts, simulators, and verified components
 
-### Safety is not an AI feature
+**The development process is a fundamental part of Synqaro, not just a recommended coding style.** Components should enter the system through a reproducible, contract-driven process that agents can help execute and verify.
 
-Safety requires multiple layers. Independent hardware protections and PLC interlocks must remain independent. Components should validate configured operating ranges and enforce local constraints. Facility-specific supervisory logic must address global situations such as unsafe weather, loss of vital telemetry, or the need to stop operations and move equipment to safe states. Such logic may take precedence over ordinary commands.
+A **versioned device contract**, negotiated with the responsible firmware or hardware team, describes commands, formats, responses, parameter units, device states and transitions, timing and timeout behavior, error codes, operating constraints, and recovery behavior as appropriate. Contracts must be understandable by engineers and machines and be linked to implementations, tests, and documentation. An agent should be able to determine what a device promises, which versions are compatible, and what a proposed firmware change affects.
 
-Generic mechanisms may support alarms, command rejection, priorities, and interlocks, but **the concrete safety rules belong to the installation and its validated protective systems**. Agents may recommend and request actions only through authorized interfaces; they must not bypass protection logic. Real-time deterministic feedback controllers, where required, remain dedicated systems rather than assumed responsibilities of the general-purpose core.
+A preferred integration cycle is:
 
-## 4. Device contracts, simulation, and fault diagnosis
+1. **Define the contract.** Hardware, firmware, and control engineers agree on intended behavior and constraints; an agent can draft, compare, or check the specification.
+2. **Build testable boundaries.** Develop a reusable protocol/communication library where appropriate, conformance tests, and a simulator implementing the contract. A physical device is not required for initial component development.
+3. **Model failures deliberately.** Use reproducible fault injection for lost or late responses, malformed messages, disconnections, invalid values, stuck states, partial failures, and relevant firmware anomalies—not only ideal behavior.
+4. **Verify the real interface.** Run applicable tests against real firmware and hardware under safe conditions. Resolve inconsistencies in the contract, simulator, tests, or firmware instead of automatically assuming that one side is correct.
+5. **Develop and integrate components.** Agents can implement device components and tests against the verified interface, then exercise them independently and within a simulated installation and its operational layer.
+6. **Preserve evidence.** Retain conformance tests, regression scenarios, firmware compatibility results, and links to requirements so future changes are checked against known behavior.
 
-Reliable integration begins with a contract jointly agreed upon by the device/firmware team and the control-system team. A contract describes, as applicable, commands, data formats, replies, error conditions, states, transitions, timing constraints, operating limits, and recovery behavior. It is versioned and is the reference for implementations and conformance tests.
+Digital twins or richer physical simulations are valuable where their fidelity justifies the effort. **Synqaro should not require a high-fidelity digital twin for every device.** A protocol-level simulator may be sufficient for a communications component; physical, timing, or system-level models may be necessary for other tests. A progressively complete simulated installation would let agents reproduce incidents, exercise operational workflows, and test fixes without repeatedly disturbing the real plant. Simulation does not remove the need for safe hardware-in-the-loop and acceptance tests on actual equipment.
 
-A typical development loop is:
+Failures must retain their identity across the system. Commands and operations should carry correlation identifiers; errors should preserve their originating component and layer, relevant timestamps, device responses, and supporting telemetry. Instead of merely reporting that a high-level operation failed, the system should make it possible to distinguish a malformed firmware response, a timeout in communication, a component-level defect, an invalid configuration, and a mistake in the operational layer. **Diagnosability is an architectural requirement because autonomous repair is impossible without usable evidence.**
 
-1. Review and agree on the device contract with the responsible engineers.
-2. Implement a reusable communication library where appropriate, plus contract-driven tests.
-3. Implement a simulator representing nominal behavior and controllable fault scenarios.
-4. Run applicable tests against the simulator and then, subject to hardware safety constraints, against the real device.
-5. Resolve discrepancies without presuming that a failure necessarily proves a firmware bug: the contract, implementation, simulator, or test may be wrong.
-6. Develop the control component against the verified interface and add component and cross-component integration tests.
-7. Retain conformance and regression tests for future firmware and software updates.
+## 5. An agentic lifecycle that connects engineering and operation
 
-Simulation must deliberately include **failure modes**, not merely successful responses: dropped and delayed messages, timeouts, malformed replies, stuck states, intermittent disconnections, invalid measurements, and known firmware defects. Scenarios should be reproducible, with fault injection separate from nominal simulation where practical.
+Synqaro should give authorized agents a **coherent view of the installation and its engineering assets**: interface contracts, device descriptions, software repositories, accessible firmware repositories, build results, simulations, test reports, configuration, telemetry, logs, incidents, documentation, and deployed versions. These assets need not be in a monorepo or controlled by one organization. Access controls, traceable versions, machine-readable links, and trustworthy provenance matter more than repository layout.
 
-The platform should make a full simulated installation feasible to the extent permitted by available models. This allows agents to reproduce incidents offline and verify fixes without repeatedly using real equipment. Simulator success is **not** proof of physical correctness: safe hardware-in-the-loop and real-system validation remain necessary.
+**During development**, agents could translate approved requirements into interface proposals, implement device drivers and operational-layer features, generate simulators and regression tests, review firmware compatibility across repositories, run CI jobs, explain failures, update documentation, and prepare reviewable changes. The goal is to delegate increasing amounts of actual implementation, not merely to ask an LLM for coding advice. Proprietary or unavailable firmware is not an obstacle to the general method if its externally visible contract can be tested.
 
-Every operation should be traceable across layers. When a device fails, the upper layers must preserve the originating error, affected component, command or operation identifier, timestamps, and relevant evidence, rather than reducing the result to an uninformative generic failure. Clear fault attribution is a core reliability requirement.
+**During operations**, agents could guide inexperienced users, assemble an observing or production setup, check prerequisites, answer questions about present and historical states, identify an unavailable device, and explain operational alternatives. Text or voice may be used, but voice is only an interaction modality. Conventional displays and command tools must remain usable. The system should expose semantic descriptions, units, timestamps, sample validity, and telemetry retention rules so an agent can request meaningful data and present a trustworthy chart rather than guessing what a measurement means.
 
-## 5. AI-native engineering across departments
+**During incident response**, the intended loop is concrete:
 
-Synqaro's engineering environment should include not just its core repository but, whenever access is possible, related firmware repositories, protocols, simulators, tests, configuration definitions, and technical documentation. These may live in a shared GitHub organization or across independently owned repositories with suitable access controls. **Shared access and versioned contracts matter more than forcing a monorepo or centralized ownership.**
+> Report or detect an anomaly -> identify the affected operation and components -> retrieve correlated telemetry and errors -> propose hypotheses -> reproduce relevant conditions in a simulator or test environment -> investigate source, firmware, configuration, and operational logic -> create a correction and regression test -> verify it -> prepare a controlled deployment -> confirm the outcome in operation.
 
-For example, a team developing a new receiver, sensor, or industrial controller could ask an agent which existing interface to preserve. The agent could examine current contracts, compare firmware implementations, propose compatible changes, create simulator and test updates, and identify corresponding changes needed in the control component. A firmware pull request could trigger compatibility checks against the control stack and associated test suites.
+An agent may ask clarifying questions, create an issue, propose a patch, or coordinate across teams. Every step should record the evidence, changes, validation, and permissions involved. Failed hypotheses and unresolved uncertainties must remain visible; an attractive explanation is not a demonstrated root cause.
 
-For proprietary devices, the system must still work from published protocols, observed behavior, and conformance tests without access to source firmware. AI review of firmware cannot replace appropriate physical tests, device-owner responsibilities, or controlled deployment procedures.
+**During analysis**, if no suitable tool exists, an agent may generate a new diagnostic script or visualization in a restricted execution environment, test it against representative data, and return its result. A reusable tool can subsequently be reviewed, versioned, documented, and published with clear interfaces and permissions. Generated analytical code must be checked for correct units, clocks, missing samples, calibration, filtering, and statistical assumptions, not just successful execution.
 
-The intended issue workflow is similarly connected: a user reports an anomaly; an agent asks for relevant details, correlates telemetry and logs, tries to reproduce the fault in a simulator, identifies a probable cause, produces a fix and regression tests, and prepares a reviewable change. Automated release and deployment permissions should be **risk-based**. Development agents may gain greater autonomy as verification capabilities mature, but safety-critical firmware, controller changes, and production deployments require separately defined safeguards.
+Autonomy should be **progressive and risk-based**. Low-risk analytical and development tasks may be completed automatically when tests and permissions allow. Changes to operating firmware, protective logic, motion limits, and production deployment require stronger independent validation and appropriate authorization. The architecture should accommodate more capable future agents without rewriting the control system, but must not assume that future models are infallible.
 
-The aim is to make cross-team engineering knowledge available through living contracts, source repositories, diagnostics, and tests, rather than relying on a handful of individuals to remember the entire system.
+## 6. Reliability, safety, and the role of deterministic systems
 
-## 6. AI-native use: a conversational operator and engineering assistant
+Synqaro's reliability objective has two sides: **reduce the introduction of defects** through contracts, simulation, and regression testing, and **reduce the time needed to understand and recover from failures** through traceability and structured diagnostics. Neither improvement should be asserted as achieved before measurement.
 
-Users should be able to interact with Synqaro through normal interfaces and, optionally, through text or speech. An agent would act as a **first-class client of structured APIs**, not as a screen-clicking substitute for a documented client. An adapter such as an MCP server may be useful at the agent boundary; it need not be the internal communication protocol.
+AI agents must not be the sole authority for physical safety. Hard limits, emergency stops, and independent hardware or PLC interlocks must remain effective even if Synqaro or an AI service fails. Components should enforce appropriate local constraints. Validated facility-specific supervisory logic should handle hazards involving multiple components—for instance dangerous weather, critical telemetry loss, or an unsafe plant condition—and take precedence over ordinary work requests.
 
-Examples of possible conversations include:
+Deterministic numerical routines and dedicated real-time controllers should remain responsible for feedback loops, physical limits, timing-critical behavior, and quantitative checks when required. Synqaro should integrate with such systems rather than assuming one generic distributed runtime can replace them. Agent requests must pass through authorization, validation, and audit mechanisms; agents must not bypass the ordinary command and safety boundaries.
 
-- A new observer or operator asks for a short introduction and is guided through an initial configuration.
-- An experienced user describes an intended observation or process. The agent checks device compatibility, prerequisites, weather or environmental conditions, planning constraints, and available alternatives, then asks for clarification when necessary.
-- A user requests the current temperature of a device, or a plot of an antenna's commanded and actual positions for the last five minutes. The agent retrieves and visualizes real measurements through approved tools.
-- An operator reports unexpected behavior. The agent investigates, distinguishes an actual fault from a configuration or procedural problem when evidence permits, and asks whether to prepare or submit an issue.
-- An engineer asks an agent to compare a proposed firmware interface with existing contracts or to diagnose a failing test.
+The normal system, including essential user interfaces, should remain operational when AI is disconnected or unavailable. AI is an increasingly autonomous engineering and interaction layer, **not a runtime dependency for safe physical control**.
 
-Numerical calculations, telemetry queries, scheduling checks, physical limits, and safety validation should be performed by deterministic services. The language model interprets the request, selects tools, integrates evidence, and explains results, with uncertainty when conclusions are not established.
+## 7. How the idea will be tested
 
-Telemetry access therefore needs discoverable measurement names, units, timestamps, validity/quality indicators, descriptions, and support for present and historical readings. Data retention and sampling must be configurable; recording every signal indiscriminately is not a goal. The same services should support conventional interfaces, independent of AI availability.
+The initial work should be deliberately limited. Before selecting a large technology stack or writing many components, Synqaro needs a demonstrator capable of testing its **distinctive claim: agent-accessible engineering evidence can connect device development, system operation, diagnosis, and verified improvement in one workflow**.
 
-### Agents that develop tools when needed
+**Stage 1 — Confirm general requirements.** Identify core responsibilities, system boundaries, expected failure modes, contract content, telemetry and observability needs, safety rules, agent permissions, and the separation between generic and operational functions. These requirements must be independent of any one facility.
 
-If the system lacks an analysis tool requested during a conversation, an authorized agent could construct and execute one **in a restricted, reproducible environment** with controlled data access and no direct hardware-control authority. The user gets the result; the tool may later be tested, reviewed, versioned, and published in a reusable catalogue with its dependencies, input/output contracts, permissions, limitations, and provenance.
+**Stage 2 — Build a minimal vertical slice.** Choose a real or realistic device, formalize its interface, implement a protocol library and simulator with fault injection, create a minimal control component, expose current and historical data, and add a small operational sequence. Give an agent structured access to the same assets and demonstrate an issue-to-fix cycle. Use this prototype to choose transport, lifecycle, testing tools, and interface design—not the reverse.
 
-A one-off script must not silently become trusted production software. An analysis can be programmatically correct while scientifically wrong because of units, clock alignment, missing samples, filtering, or inappropriate statistical assumptions. Verification must address the meaning of results, not just the absence of exceptions.
+**Stage 3 — Validate, extend, and plan controlled adoption.** Compare simulated behavior with real hardware where safely available; test regression detection and error localization; exercise a modest multi-device operational layer; establish release and deployment controls; and plan staged implementation. Test a second application domain to see whether the core remains genuinely generic.
 
-### Progressive autonomy
+Evidence should include, where measurable, component startup and test effort, fault-injection coverage, time to reproduce and localize faults, compatibility after firmware changes, regression quality, deployment effort, operational stability, and **the fraction and complexity of lifecycle tasks completed correctly by agents with specified supervision and verification**. Agent autonomy, speed, and operating cost should be measured against conventional workflows. Benefits are hypotheses until demonstrated.
 
-Synqaro should not hardcode today's AI limitations into its architecture. The long-term goal is extensive autonomy in engineering, support, diagnosis, and appropriate operations. Permissions and validation gates should be adjustable by task and risk, allowing responsibility to increase when evidence supports it. This is **not** a premise that future models will be infallible, nor a reason to make the control core dependent on them.
+## 8. Open development, collaboration, and funding
 
-## 7. A credible path from concept to demonstrations
+An open-source distribution is a proposed direction, not a licensing decision already made. Synqaro should enable independent contributions and reusable components while respecting institutional policies, proprietary firmware, cybersecurity needs, and deployment responsibilities. Governance, licensing, version compatibility, security disclosure, release practices, and contribution rules remain to be designed.
 
-Synqaro must be evaluated through small, representative experiments before committing to an extensive framework design. The initial process is:
+A realistic funding proposition is broader than replacement of a single control framework. It combines a reusable control foundation, a contract-and-simulation-based development method, a verifiable agentic engineering lifecycle, and experimental evidence from demanding installations. Potential funding avenues to evaluate include INAF and other research institutions; relevant Horizon Europe Research Infrastructures calls, including suitable INFRATECH or INFRADEV topics; regional and national research-and-innovation programmes, including Sardinian ERDF/FESR initiatives; open-source funding; and scientific or industrial partnerships. **These are possibilities, not verified currently open calls or confirmed eligible projects.**
 
-**Stage 1 — General requirements.** Define functional responsibilities, safety boundaries, observability, reliability, operational needs, AI capabilities, and the distinction between core and domain logic.
+Useful deliverables would be a repeatable core demonstrator, reusable interface-contract tools, a simulator and fault-injection suite, cross-device conformance tests, a complete traceable issue-to-fix agent workflow, a small operational layer, and evidence of reuse in another domain. Funding requirements should not lead to unnecessary architectural complexity.
 
-**Stage 2 — Architecture and tools.** Compare modest technical options. Build a minimal vertical slice: a real or realistically simulated device contract, communication library, component, telemetry access, fault injection, and a small domain-specific operational workflow. Test usability by human clients and agents; reject unnecessary abstraction.
+## 9. Concrete proving grounds and transferability
 
-**Stage 3 — Delivery plan.** Select a limited group of real components, define acceptance criteria, CI and regression suites, staging and hardware validation, security policies, and a safe migration strategy. Expand by measured capability rather than promised feature count.
+**Sardinia Radio Telescope (SRT), Medicina, and Noto.** These are three radioastronomy facilities of the Italian National Institute for Astrophysics (**INAF**, *Istituto Nazionale di Astrofisica*). They are potential initial proving grounds because their present control system uses common interfaces and architecture while accommodating different configurations and, for some components, **different implementations behind the same interface**. This makes them a realistic place to test component replacement, compatible device contracts, simulator-backed verification, and a dedicated radioastronomy operational layer. A sufficiently successful prototype could support a carefully managed operational migration, subject to institutional decisions and safety acceptance.
 
-A crucial architectural test is whether **a second application domain can implement its operational layer without forcing domain concepts into the core**. A simulated industrial process or a narrowly scoped scientific subsystem may be enough for this experiment.
+**Einstein Telescope (ET).** This proposed next-generation gravitational-wave observatory offers a possible second, scientifically demanding context in which to test the **same design and development principles**, the reusable core where suitable, and the same agentic methods of integration, diagnosis, and extension. A prototype could focus on an appropriate supervisory subsystem, environmental instrumentation, infrastructure monitoring, or another clearly bounded application. ET-specific capabilities could be added through optional extensions and its own operational layer, while dedicated high-frequency control and protective systems retain their established responsibilities. Requirements, interfaces, timing, and safety must be assessed with the relevant experts; no collaboration with ET or adoption by the project is implied.
 
-Useful evaluation criteria include component startup complexity, deployment effort, time to reproduce and diagnose faults, contract conformance, failure containment, integration effort, regression coverage, reliability under injected faults, and the proportion of engineering tasks agents can complete under defined verification criteria. These are proposed measurements, not benefits already proven.
+**Industry and other research facilities.** Manufacturing, experimental laboratories, distributed plants, and test facilities may benefit from the same reusable foundation and agentic workflow, with independently developed operational layers. This is a **transferability hypothesis**, not a claim that one unmodified core will automatically satisfy all regulatory, real-time, or operational requirements. A second-domain prototype should test exactly where extensions are necessary and whether those extensions preserve simplicity.
 
-## 8. Open source, collaboration, and funding
+---
 
-Synqaro is intended to be evaluated as an **open-source** platform capable of attracting external users, contributors, and institutional partners. Governance, licensing, contribution rules, interface stability, release practices, and ownership of firmware or third-party IP require decisions before publication.
+## 10. Technical case note — Modernizing the INAF radio-telescope control systems
 
-Funding is strategic because the research contribution is wider than one installation: it includes an integrated lifecycle model, reusable control mechanisms, simulation and fault-diagnosis methodology, AI-assisted cross-repository engineering, and controlled agent-based operations.
+*This application-specific section addresses the engineers and managers responsible for SRT, Medicina, and Noto. It is a possible adoption case for Synqaro, not the definition or primary rationale of the platform.*
 
-Funding routes to investigate include:
+### The engineering and operational problem
 
-- **INAF and other research institutions:** engineering R&D and modernization of research facilities.
-- **Horizon Europe Research Infrastructures — INFRATECH:** technology development and innovative digital solutions for research infrastructures, subject to the requirements of each call.
-- **Horizon Europe Research Infrastructures — INFRADEV and related topics:** collaboration and infrastructure development where the actual call scope is relevant.
-- **Regional and national R&I programmes**, including Sardinia's ERDF/FESR initiatives and programmes connected to scientific and industrial infrastructure ecosystems.
-- **Open-source and digital-commons funding** for well-defined reusable modules, where eligibility and objectives align.
-- **Consortia and applied research partnerships** with observatories, research institutes, universities, and industrial organizations.
+The three telescopes currently use **DISCoS**, a radio-telescope control system built on **ALMA Common Software (ACS)**. ACS provides legitimate distributed-component services, but its runtime and programming model introduce considerable framework-specific infrastructure around device-facing behavior that can itself be quite simple. This complexity affects the cost of understanding components, testing them, integrating changes, and investigating anomalies.
 
-These are **candidate programme families, not confirmed currently open or eligible calls**. For each application, the team must check the current official call, beneficiaries, consortium rules, expected impacts, technology readiness, eligible costs, deadlines, and required deliverables. Grant applications should shape demonstrators and reporting, **not inflate or distort the core architecture**.
+For example, to exercise one ACS component, a developer must first have the required ACS environment available, start the framework services and an ACS **container** (an ACS hosting process), launch the component, and only then run component tests. Depending on the existing setup, this may involve a virtual machine. **The entire telescope control system does not need to be started.** The distinction matters: the criticism concerns avoidable framework and environment overhead, not a false claim that all telescope services must be running. An ACS container is not a Docker-style deployment container.
 
-Proposed fundable outcomes include a reproducible software demonstrator; a validated device contract and fault-injection suite; an independently testable control component; a facility-specific operational layer; an agent-assisted issue-to-fix workflow; and evidence of reuse in a second domain. Demonstrators should expose measurable engineering outcomes rather than promising universal applicability.
+More seriously, **the motivation is operational unreliability and inadequate fault diagnosability**, not just age or developer inconvenience. When a commanded operation misbehaves, it may be difficult to establish whether the cause lies in the device firmware, the communications protocol, ACS infrastructure, device-component code, or higher-level orchestration. Failure evidence can be fragmented or lose specificity while moving between layers; realistic negative-path tests and reproducible device simulation may be insufficient. This can leave the origin of a fault unresolved and make the same behavior difficult to prevent from recurring.
 
-## 9. Initial validation environments and future applications
+These concerns are based on firsthand engineering experience with the installations, not on downtime statistics or a quantitative comparison supplied in this document. An adoption proposal should gather representative incidents, reproducibility data, and evidence of engineering effort. **The fact that a system is deployed does not, by itself, establish acceptable reliability**, but neither should its replacement be justified by unsupported defect-rate claims.
 
-### First proving ground: three INAF radio telescopes
+### What changes with Synqaro
 
-The **Sardinia Radio Telescope (SRT)**, the **Medicina Radio Telescope**, and the **Noto Radio Telescope** are three Italian radioastronomy facilities operated by the **Istituto Nazionale di Astrofisica (INAF)**. They provide a concrete opportunity to evaluate Synqaro against real operational needs, rather than creating an abstract framework without users or hardware.
+The proposed replacement is **not a mechanical rewrite of DISCoS on a different middleware**. It is a different way to specify, develop, verify, operate, and continuously improve the control software:
 
-Their current control software shares a common architecture and interfaces while using **different site configurations and, for some devices, different component implementations behind the same interface**. This makes them a useful first test of Synqaro's distinction between reusable core mechanisms, replaceable device implementations, and installation-specific operational configurations.
+- **Independent components and simpler infrastructure.** Device-facing services can be started, simulated, tested, and diagnosed without the ACS-specific runtime sequence; their implementation focuses on device behavior rather than framework ceremony.
+- **Contracts shared with firmware teams.** Interface versions, commands, states, timing, limits, and error conditions become explicit engineering assets, with conformance and regression tests that can be retained when firmware or devices change.
+- **Simulator-first reliability engineering.** Expected behavior and failure modes are exercised before deployment. Delays, missing replies, invalid packets, interrupted connections, and other faults become reproducible tests rather than surprises first seen at the telescope.
+- **Traceable faults, rather than generic failures.** Correlated operations, structured errors, and historical telemetry help identify whether the problem is in hardware, firmware, communications, component software, configuration, or operational logic.
+- **Agent-driven engineering and maintenance.** An agent can work across accessible contracts, code, simulators, logs, and tests to develop new components, investigate incidents, propose a correction, add regression coverage, and prepare reviewable changes. This capability is the principal strategic difference from a conventional framework migration.
+- **Site-specific flexibility with common foundations.** The three facilities can share a core and radioastronomy operational concepts while retaining different hardware interfaces, component implementations, configurations, and site-dependent procedures.
+- **Operator assistance grounded in real state.** An agent may help configure observations, check prerequisites, explain warnings, retrieve historical measurements, and initiate a documented diagnostic workflow without bypassing validated operational or safety procedures.
 
-The experimental programme could develop a radioastronomy operational layer while progressively replacing selected existing components, reusing their behavioral knowledge but not mechanically copying legacy architecture. SRT, Medicina, and Noto would serve as development and validation environments, and successful outcomes could support an eventual operational migration. The specific migration scope, authorization, staffing, and timetable are not yet established.
+The expected institutional benefits are fewer opaque failures, shorter diagnosis and integration cycles, lower dependence on scarce framework-specific knowledge, easier training, safer upgrades, and greater long-term maintainability. **These outcomes must be measured; they are not guarantees.** The additional value is that such an investment would contribute to a reusable platform for other scientific and industrial infrastructures rather than only producing a replacement for three telescopes.
 
-### Additional experimental domain: Einstein Telescope
+### A migration credible to the observatories
 
-**Einstein Telescope (ET)** is a proposed next-generation gravitational-wave observatory. It could be a valuable second domain in which to **test the transferability of the same core principles and AI-native engineering lifecycle**: device contracts, simulator-first integration, fault diagnosis, cross-team firmware/software coordination, supervisory monitoring, operator assistance, and extensible domain-specific workflows.
+Operational reliability must take precedence over speed of replacement. Start with selected noncritical or appropriately isolated components; recover the actual required behavior from current software and operational experience; establish contract and simulation tests; compare with real devices; and then validate combinations of components and portions of the observational workflow. Use staged deployment, regression suites, hardware-in-the-loop where feasible, monitored trials, and explicit acceptance criteria. Existing protective interlocks and observatory safety procedures remain authoritative.
 
-A scoped prototype could use a simulated or partnered supervisory subsystem—for example monitoring, environmental instrumentation, or a cryogenic-support workflow—without assuming that Synqaro should implement high-frequency interferometer feedback control. Any use in ET would require engagement with its engineering teams, concrete subsystem requirements, and appropriate validation. **No ET partnership or adoption is implied.**
+A crucial criterion is whether Synqaro can **diagnose and prevent classes of failures that the present development model leaves opaque**. A pilot that demonstrates only modern code structure or a conversational interface would not be sufficient justification for migration. Conversely, measurable improvement in fault isolation, regression detection, and incident resolution would make a substantially stronger case to operational stakeholders.
 
-Such a demonstrator could be scientifically useful even without deployment in the operational detector: it would test whether a common control core and AI-native lifecycle transfer beyond radioastronomy without significant architectural burden.
-
-### Other scientific and industrial systems
-
-The same hypothesis may apply to laboratories, distributed test facilities, industrial automation, and other installations that integrate heterogeneous devices and require monitoring, coordinated operations, fault diagnosis, and long-term maintenance. Applicability must be demonstrated, not presumed. Where specialized real-time or certified safety controls exist, Synqaro should integrate with them rather than replacing them indiscriminately.
-
-## 10. Technical case note: why the INAF radio telescopes need a new approach
-
-*This section is deliberately application-specific. It explains the operational motivation for using Synqaro as a replacement path for existing radio-telescope control software; it is not the rationale for limiting Synqaro to radioastronomy.*
-
-### Current situation
-
-SRT, Medicina, and Noto currently use a radio-telescope control system built on **ALMA Common Software (ACS)**. The principal difficulty is not merely that ACS is old. It is that the existing engineering model imposes substantial framework-specific complexity on components whose device-facing logic can be relatively simple.
-
-Even to run tests for one component, a developer may need to start the necessary virtual-machine environment, initialize ACS, start an ACS **container** (the framework process hosting the component), start the component, and only then execute the test. This is **not** a requirement to start the entire telescope control system: the burden is the framework runtime and its setup. ACS's use of the word *container* should not be confused with a modern deployment container such as Docker.
-
-The system is costly to understand and change. Framework-specific code, aging dependencies, limited or outdated documentation, and manual integration procedures make onboarding slow and concentrate maintenance knowledge in a small group. Troubleshooting is especially difficult when a failure could originate in device firmware, communications, framework behavior, or application code built above it. Inadequate fault isolation and limited automatic regression coverage can allow incidents to recur or remain unresolved for long periods.
-
-Crucially, the concern is **operational reliability**, not simply developer convenience. According to experience with these installations, shortcomings in the present design and testing process contribute to unreliable behavior and make it unnecessarily difficult to locate the cause of faults. The project should not portray the existing software as reliably controlling the telescopes simply because it is in use. At the same time, this document does not invent downtime statistics, incidents, or quantified defect rates that have not yet been provided.
-
-### Why replacing the approach is worthwhile
-
-For INAF, Synqaro could offer a different maintenance and assurance model:
-
-- Components can be launched and tested independently, without the ACS-specific runtime sequence.
-- Firmware and communication interfaces are treated as explicit, versioned contracts, shared with device-development groups.
-- Simulators exercise both nominal operation and failure modes before changes touch telescope hardware.
-- The same safe conformance tests can reveal regressions after firmware updates.
-- Structured errors and correlated telemetry support fault localization through all layers.
-- Automated build, integration, regression testing, and agent-assisted issue resolution become ordinary development practice rather than exceptional projects.
-- Different telescopes can reuse interfaces and core mechanisms while retaining their own configurations, hardware adapters, and operational differences.
-- Conversational assistance can help operators configure observing sessions, diagnose problems, inspect telemetry, and report incidents.
-
-These changes target **reliability, maintainability, incident response, engineering effort, and the ability to evolve the software for decades**. They are not justified solely by replacing old technologies with newer ones.
-
-### A controlled migration, not an uncontrolled replacement
-
-The existing installation cannot simply be switched off while a replacement is developed. A credible plan would establish tested component contracts, validated simulation, isolated subsystem pilots, comparisons with real device behavior, hardware-in-the-loop testing where applicable, operational acceptance criteria, and appropriately staged deployment. Protective systems and observatory-specific safety procedures remain authoritative throughout.
-
-For managers and technical teams, the value proposition is not a speculative software rewrite. It is **an opportunity to resolve persistent reliability and diagnosability problems while creating a reusable, testable engineering capability** whose benefits can extend to new devices, new staff, and potentially other facilities. The first prototypes should provide enough operational evidence to decide whether a broader migration is justified.
-
-## 11. Decisions still open
-
-Synqaro's architecture should not be treated as settled. Decisions to investigate include the internal communication protocol, programming languages, component lifecycle, event delivery, telemetry storage and retention, deployment topology, access control, domain orchestration primitives, detailed safety boundaries, configuration formats, simulator APIs, testing infrastructure, agent integration protocol, agent tool sandbox, repository governance, open-source licensing, and policies for automated code changes and deployment.
-
-Especially important questions are **how small the core can remain**, which capabilities should be optional, how cross-domain portability can be demonstrated, and what evidence is required before granting agents more autonomy. These should be answered with prototypes and explicit technical trade-offs rather than assumptions.
-
-## 12. Guidance for future AI reviewers and contributors
-
-Treat this document as a **vision and preliminary requirements brief**, not an implementation specification. When evaluating Synqaro:
-
-- Prioritize simplicity, independent testability, failure diagnosis, and verifiable safety.
-- Challenge claims of universal applicability, automatic reliability, or assured AI superiority; propose practical demonstrations instead.
-- Keep the generic core separate from domain-specific operational logic and specialized real-time systems.
-- Do not reproduce ACS's architecture merely because legacy source code is available; recover required behaviors and interfaces.
-- Prefer versioned contracts, simulator-backed conformance tests, and explicit error provenance over implicit coupling.
-- Design AI as a capable, replaceable client and engineering participant, never as the sole safety authority.
-- Treat firmware, control software, simulations, documentation, and tests as connected but separately governed assets.
-- Do not write production code or commit to a stack before requirements and a small prototype justify the choice.
-- Use the INAF telescopes as concrete validation opportunities, and ET or industrial scenarios as later portability experiments, without claiming partnerships or approvals.
-- Identify both technical benefits and credible failure modes. Proposed advantages are hypotheses until demonstrated.
-
-**Ultimate objective:** a small, robust, reusable control foundation plus an AI-native engineering and operational ecosystem that lets complex installations be developed, understood, extended, and maintained far more effectively across their lifetimes.
+The project should therefore be assessed as a **controlled engineering experiment with potential operational payoff**, not as a commitment to retire the existing software before a better alternative has been demonstrated.
