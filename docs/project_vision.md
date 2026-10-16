@@ -3,7 +3,7 @@
 **An AI-native platform for engineering and controlling complex distributed systems**
 
 **Project vision and preliminary engineering principles**  
-**Version:** 0.7  
+**Version:** 0.8  
 **Date:** October 16, 2026  
 **Status:** Concept and research proposal. The architecture, technology stack, partnerships, and deployment plans are not yet approved.
 
@@ -15,7 +15,7 @@
 
 Its defining proposition is **a continuous, verifiable connection between what a system is supposed to do, what has been implemented, what can be simulated and tested, and what actually happens in operation**. Agents should be able to navigate that connection and act on it, subject to explicit permissions and independent safety and acceptance mechanisms. A fault reported by an operator should be traceable to evidence, reproducible where possible, and actionable as a tested change rather than disappearing into disconnected logs, repositories, teams, and undocumented assumptions.
 
-Synqaro is intended for scientific facilities, industrial plants, and other installations composed of heterogeneous devices and software. A **small, domain-independent control core** would expose shared mechanisms; each installation would supply its own **operational layer**. The agentic engineering environment, contracts, simulation methods, diagnostic mechanisms, and development practices would remain common across applications.
+Synqaro is intended for scientific facilities, industrial plants, and other installations composed of heterogeneous devices and software. A **small, domain-independent control core** would expose shared mechanisms; each installation would supply its own **operational layer**. The agentic engineering environment, contracts, simulation methods, diagnostic mechanisms, and development practices would remain common across applications. **Synqaro must be AI-native without depending on any particular agent framework, model, or inference provider:** the entire agentic environment must be replaceable without redesigning the control platform.
 
 The innovations Synqaro aims to demonstrate are therefore not basic device communication or telemetry, which established systems already provide, but the following combination:
 
@@ -23,7 +23,8 @@ The innovations Synqaro aims to demonstrate are therefore not basic device commu
 2. **A closed engineering-to-operations loop.** Requirements, device protocols, implementations, simulators, tests, deployments, telemetry, incidents, and fixes remain linked and traceable. Findings from operations can feed directly into reproducible tests and improvements.
 3. **Agent-ready verification rather than trust in generated code.** Explicit contracts, simulator-first development, fault injection, conformance checks against real devices, regression tests, and controlled delivery make autonomous engineering testable and progressively extensible.
 4. **One generic foundation, many application-specific operating models.** A common control core and agentic lifecycle can support distinct operational layers, avoiding the assumption that a radio telescope, a gravitational-wave observatory, and an industrial plant must share the same operational procedures.
-5. **Progressively increasing autonomy without surrendering deterministic control.** More engineering and appropriate operational work can be delegated to agents as their performance and verification improve, while essential control, hard limits, interlocks, and safe fallback behavior remain independent of probabilistic AI services.
+5. **Replaceable agents and models, by architectural contract.** The agentic layer (provisionally called **Smith**) is separate from the control core and operational layers. Its interfaces to control services, models, and operator-facing applications must be defined, versioned, and testable, supporting local or remote models and future replacement of Smith itself.
+6. **Progressively increasing autonomy without surrendering deterministic control.** More engineering and appropriate operational work can be delegated to agents as their performance and verification improve, while essential control, hard limits, interlocks, and safe fallback behavior remain independent of probabilistic AI services.
 
 **The ambition is not simply to write a new control framework faster using AI. It is to build a control and engineering platform that AI agents can understand, extend, test, repair, and help operate throughout its lifetime.** This is a research and engineering objective, not an already demonstrated advantage or a claim that no related projects exist.
 
@@ -56,6 +57,20 @@ The boundary should not force each operational layer to reinvent generic mechani
 **Device-facing components and adapters** connect declared interfaces to actual firmware, controllers, PLCs, sensors, actuators, or external systems. A stable contract may be implemented by several different devices. Where source code is available, the agentic environment may also examine firmware and related tests; otherwise it must work from approved protocols and observed conformance.
 
 Finally, agents should be **first-class clients** of the same documented, permissioned capabilities used by conventional applications. Machine-readable metadata and discoverable tools are essential. An agent-facing adapter such as MCP may be useful, but should not dictate the core's internal transport or require AI to be online for the installation to function.
+
+### AI layer boundary and replaceability (Smith)
+
+**Smith is a provisional name for an architectural role, not a selected product or required implementation.** It is an agentic environment that can use authorized control and engineering capabilities to assist operators and engineers. Its replacement must not require rewriting Synqaro's device components, core, operational layers, or operator applications.
+
+Three distinct interfaces must remain explicit and versioned:
+
+- **Smith ↔ Synqaro:** a domain-independent, authenticated and permissioned interface to discover capabilities, issue validated commands, retrieve live and historical state, investigate incidents, and access approved engineering assets. Its semantics, error schemas, audit trail, and safety boundaries belong to Synqaro, not to an agent vendor.
+- **Smith ↔ AI models and tools:** adapters for interchangeable local and remote inference endpoints and tool runtimes, with capability discovery and compatibility tests. A different model may require different prompts, tool formats, context handling, or evaluation thresholds; interchangeability is an engineering objective, not a claim of behaviorally identical models.
+- **Smith ↔ operators:** a stable application-facing interface for requests, responses, progress, explanations, evidence, approvals, and handoffs, independent of any particular chat application, voice frontend, or agent implementation.
+
+Keep long-lived engineering knowledge in versioned contracts, documentation, source control, test results, telemetry, and incident records, rather than relying on one agent's conversational memory. Agents may maintain useful persistent context, but must be able to retrieve authoritative current state on demand. **Safety-critical operation must continue if Smith, its model, or its connectivity is unavailable.**
+
+**Hermes Agent (Nous Research) is one candidate implementation to investigate, not a dependency or an adopted technology.** Its documented support for MCP tool servers, multiple inference providers (including compatible local endpoints), and agent interoperability is relevant. An evaluation should examine whether its boundaries and protocols are open, widely interoperable, stable under version changes, and suitable for authorization, observability, operational latency, and deployment isolation. Standard interfaces such as MCP may inform Synqaro's integration adapters where appropriate; Synqaro should not adopt a Hermes-specific interface merely because Hermes currently provides it. [5–6]
 
 ## 4. The engineering method: contracts, simulators, and verified components
 
@@ -110,7 +125,7 @@ The initial work should be deliberately limited. Before selecting a large techno
 
 **Stage 1 — Confirm general requirements.** Identify core responsibilities, system boundaries, expected failure modes, contract content, telemetry and observability needs, safety rules, agent permissions, and the separation between generic and operational functions. These requirements must be independent of any one facility.
 
-**Stage 2 — Build a minimal vertical slice.** Choose a real or realistic device, formalize its interface, implement a protocol library and simulator with fault injection, create a minimal control component, expose current and historical data, and add a small operational sequence. Give an agent structured access to the same assets and demonstrate an issue-to-fix cycle. Use this prototype to choose transport, lifecycle, testing tools, and interface design—not the reverse.
+**Stage 2 — Build a minimal vertical slice.** Choose a real or realistic device, formalize its interface, implement a protocol library and simulator with fault injection, create a minimal control component, expose current and historical data, and add a small operational sequence. Give an agent structured access to the same assets through a provisional Smith-compatible adapter and demonstrate an issue-to-fix cycle. Exercise an alternate model or agent runtime to test whether the boundary is genuinely replaceable. Use this prototype to choose transport, lifecycle, testing tools, and interface design—not the reverse.
 
 **Stage 3 — Validate, extend, and plan controlled adoption.** Compare simulated behavior with real hardware where safely available; test regression detection and error localization; exercise a modest multi-device operational layer; establish release and deployment controls; and plan staged implementation. Test a second application domain to see whether the core remains genuinely generic.
 
@@ -169,3 +184,6 @@ Operational reliability must take precedence over speed of replacement. Start wi
 A crucial criterion is whether Synqaro can **diagnose and prevent classes of failures that the present development model leaves opaque**. A pilot that demonstrates only modern code structure or a conversational interface would not be sufficient justification for migration. Conversely, measurable improvement in fault isolation, regression detection, and incident resolution would make a substantially stronger case to operational stakeholders.
 
 The project should therefore be assessed as a **controlled engineering experiment with potential operational payoff**, not as a commitment to retire the existing software before a better alternative has been demonstrated.
+
+
+*Agent interoperability references:* [5] [Hermes Agent: MCP integration](https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp/); [6] [Hermes Agent: integrations and model providers](https://hermes-agent.nousresearch.com/docs/integrations). These sources document candidate capabilities, not production suitability or interoperability guarantees.
