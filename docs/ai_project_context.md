@@ -8,7 +8,7 @@
 
 **Related authoritative document:** [Synqaro Project Vision v0.9](project_vision.md)
 
-**Current component architecture:** [Synqaro Component Architecture](component.md)
+**Current Device architecture:** [Synqaro Device Architecture](device.md)
 
 ## 1. How to use this document
 
@@ -28,8 +28,8 @@ The labels used here have precise meanings:
 Synqaro is an AI-native engineering and control platform for complex distributed scientific and industrial systems. It is not primarily a conventional control framework with a chatbot added on top. Its defining objective is to make the entire lifecycle accessible to, and increasingly executable by, AI agents:
 
 - requirements and architecture;
-- device and firmware integration;
-- component and operational-layer development;
+- hardware and firmware integration;
+- Device and operational-layer development;
 - simulator and test generation;
 - deployment and configuration;
 - operation and user assistance;
@@ -37,7 +37,7 @@ Synqaro is an AI-native engineering and control platform for complex distributed
 - issue reproduction and correction;
 - maintenance and long-term evolution.
 
-Traditional control capabilities—distributed communication, commands, state, telemetry, alarms, history, sequencing, and supervision—are necessary, but they are not individually the innovation claim. The distinguishing hypothesis is that contracts, components, simulators, tests, telemetry, errors, source code, and operational knowledge can be connected coherently enough for agents to develop, understand, diagnose, and evolve the system reliably.
+Traditional control capabilities—distributed communication, commands, state, telemetry, alarms, history, sequencing, and supervision—are necessary, but they are not individually the innovation claim. The distinguishing hypothesis is that contracts, Devices, simulators, tests, telemetry, errors, source code, and operational knowledge can be connected coherently enough for agents to develop, understand, diagnose, and evolve the system reliably.
 
 Synqaro must therefore be **AI-native without becoming AI-dependent**. Deterministic control must continue to function when the agentic environment is unavailable.
 
@@ -49,9 +49,9 @@ The central problem is not merely that ACS and its dependencies are old. The ope
 
 - specialist knowledge takes substantial time to acquire;
 - documentation and technologies age together;
-- even isolated component work may require a heavy environment and long startup path;
+- even isolated Device work may require a heavy environment and long startup path;
 - testing and debugging are difficult to isolate;
-- failures can be hard to locate across firmware, communication, framework, component code, and orchestration;
+- failures can be hard to locate across firmware, communication, framework, Device code, and orchestration;
 - automated tests, modern delivery workflows, and agentic development are harder to introduce;
 - maintenance becomes concentrated in a small number of people;
 - obsolescence propagates to clients and adjacent software.
@@ -68,15 +68,15 @@ Claims of lower cost, greater reliability, or faster maintenance are motivations
 
 The Synqaro Core should provide a limited set of reusable mechanisms:
 
-- component registration and discovery;
+- Device registration and discovery;
 - command invocation and long-running operation tracking;
 - states, events, alarms, and structured diagnostics;
 - current and historical telemetry access;
-- configuration and component-level operating limits;
+- configuration and Device-level operating limits;
 - correlation and traceability across commands, events, failures, and tests;
 - uniform, permission-aware machine access for clients and agents.
 
-The core should understand components, capabilities, commands, states, parameters, events, and errors. It should not embed concepts such as astronomical observations, receivers, backends, interferometers, or production lines.
+The core should understand Devices, capabilities, commands, states, parameters, events, and errors. It should not embed concepts such as astronomical observations, receivers, backends, interferometers, or production lines.
 
 The core provides mechanisms. Application-specific layers provide policies.
 
@@ -96,18 +96,18 @@ The astronomer/operator experience and the technical diagnostic experience have 
 
 The technical interface is not automatically a second orchestration system. It may primarily access the core directly for diagnostics, state inspection, tests, and authorized low-level operations. The observing layer coordinates domain operations. Keep user interfaces separate from orchestration responsibilities.
 
-### 4.4 Components must be independently understandable and testable
+### 4.4 Devices must be independently understandable and testable
 
-For the prototype, a Synqaro component is an independently running software model/controller for one physical device or tightly coupled hardware subsystem, and each component runs as a separate operating-system process. This is a deliberate failure and restart boundary. A component is still not defined by a deployment container: containers remain optional, and a component may move between hosts without changing its public API. The focused [component architecture](component.md) records this refinement of the broader process-mapping question left open in the Project Vision.
+For the prototype, a Synqaro **Device** is the software representation and controller for one physical device or tightly coupled hardware subsystem. It runs as an independently restartable operating-system process, communicates with the underlying hardware or a simulator, maintains current state, and exposes commands, state, and events to the rest of Synqaro. This is a deliberate failure and restart boundary. A Device is not defined by a deployment container: containers remain optional, and a Device may move between hosts without changing its public API. The focused [Device architecture](device.md) records this refinement of the broader process-mapping question left open in the Project Vision.
 
-Each component should:
+Each Device should:
 
 - expose an explicit, versioned contract;
 - start and run without requiring the entire facility;
 - have controlled dependencies;
 - support simulation and automated verification;
 - preserve precise diagnostic information;
-- be replaceable without forcing unrelated components to change.
+- be replaceable without forcing unrelated Devices to change.
 
 Legacy code is evidence of required behavior, not a design to translate line by line. Reconstruct the necessary behavior and remove historical framework complexity.
 
@@ -127,7 +127,7 @@ Errors must retain their identity and context across layers. The system should d
 - timeouts and incomplete responses;
 - invalid configuration;
 - operating-limit violations;
-- component software defects;
+- Device software defects;
 - orchestration or coordination failures.
 
 The aim is to prevent a low-level failure from becoming an uninformative high-level error. Commands, events, logs, alarms, and issue records should carry correlation identifiers sufficient to reconstruct a causal chain.
@@ -159,7 +159,7 @@ The development environment should provide:
 
 - an authoritative, versioned repository of vision, requirements, decisions, contracts, and procedures;
 - persistent agent instructions, expected to include an `AGENTS.md` file;
-- a reproducible environment that can run the system against simulated devices;
+- a reproducible environment that can run the system against simulated hardware;
 - automated tests and fault scenarios that agents can execute without physical hardware;
 - traceability from requirements to contracts, code, tests, observed failures, and fixes;
 - independent review and verification rather than trust in plausible generated code.
@@ -191,26 +191,26 @@ If an operator asks for an analysis for which no tool exists, an agent may creat
 
 Temporary tools must not acquire control permissions merely because they can read telemetry. Scientific validity requires explicit assumptions, units, timestamp handling, missing-data behavior, and domain validation; software tests alone are insufficient.
 
-## 7. Contract-first device workflow
+## 7. Contract-first hardware workflow
 
-For each device or device family, use this working sequence:
+For each physical device or hardware family, use this working sequence:
 
 1. **Define a verifiable contract.** Specify commands, parameters, responses, state transitions, timing constraints, operating limits, invalid inputs, loss of communication, partial responses, and error behavior.
-2. **Implement the communication library and conformance tests.** Keep protocol behavior separate from the higher-level component.
-3. **Build the simulator.** Derive it from the contract, not from an implicit shared interpretation in the component code.
+2. **Implement the communication library and conformance tests.** Keep protocol behavior separate from the higher-level Device.
+3. **Build the simulator.** Derive it from the contract, not from an implicit shared interpretation in the Device code.
 4. **Add fault injection.** Simulate delays, timeouts, dropped connections, incomplete or incoherent responses, stuck states, out-of-range values, and faults observed in real firmware.
-5. **Verify safe subsets against real hardware.** Run applicable conformance tests on the device and record deviations. Potentially dangerous tests require explicit authorization and controlled conditions.
-6. **Build the control component.** Use the verified communication layer and add component-level behavior, state, limits, telemetry, and diagnostics.
+5. **Verify safe subsets against real hardware.** Run applicable conformance tests on the hardware and record deviations. Potentially dangerous tests require explicit authorization and controlled conditions.
+6. **Build the Device.** Use the verified communication layer and add Device-level behavior, state, limits, telemetry, and diagnostics.
 7. **Add integration tests.** Verify coordination and error propagation in the simulated system before hardware validation.
 8. **Continuously reconcile simulator and hardware.** Simulator success never proves real-hardware correctness. Every discovered mismatch should improve the contract, simulator, tests, or implementation.
 
-Keep the normal simulator behavior conceptually separate from fault injection. The simulator should be as simple as the device permits while making new fault scenarios easy to add.
+Keep the normal simulator behavior conceptually separate from fault injection. The simulator should be as simple as the hardware permits while making new fault scenarios easy to add.
 
 ## 8. Initial SRT prototype plan
 
 The first implementation target is intentionally small and empirical.
 
-### Phase 1: three independent components
+### Phase 1: three independent Devices
 
 Build one representative instance of each:
 
@@ -218,7 +218,7 @@ Build one representative instance of each:
 - backend;
 - servomechanism.
 
-Do **not** introduce orchestration initially. For each component, define and validate:
+Do **not** introduce orchestration initially. For each Device, define and validate:
 
 - contract and naming conventions;
 - commands and operation lifecycle;
@@ -233,11 +233,11 @@ The purpose is to learn what the common core actually needs before designing a h
 
 ### Phase 2: integrated simulated system
 
-Run the three components together against simulators. Demonstrate reproducible startup, state discovery, telemetry, command correlation, injected failures, diagnosis, and recovery without physical hardware.
+Run the three Devices together against simulators. Demonstrate reproducible startup, state discovery, telemetry, command correlation, injected failures, diagnosis, and recovery without physical hardware.
 
 ### Phase 3: hardware conformance
 
-Apply safe conformance tests to the real devices, compare observed behavior with the contracts and simulators, and revise any incorrect assumptions.
+Apply safe conformance tests to the physical hardware, compare observed behavior with the contracts and simulators, and revise any incorrect assumptions.
 
 ### Phase 4: operational and technical experiences
 
@@ -250,14 +250,14 @@ The observing layer should be built for SRT first. Do not attempt to make it gen
 
 ### Phase 5: orchestration
 
-Only after the components and diagnostic model are stable, explore orchestration. The current SRT “boss of bosses → subsystem bosses → components” hierarchy is reference behavior, not a required future architecture. Prototype the simplest mechanism that can coordinate configuration, prerequisites, asynchronous work, timeouts, cancellation, completion, recovery, and safety priority.
+Only after the Devices and diagnostic model are stable, explore orchestration. The current SRT “boss of bosses → subsystem bosses → legacy ACS leaf services” hierarchy is reference behavior, not a required future architecture. Prototype the simplest mechanism that can coordinate configuration, prerequisites, asynchronous work, timeouts, cancellation, completion, recovery, and safety priority.
 
 ### Phase 6: agentic lifecycle demonstration
 
 Demonstrate at least one end-to-end case in which an agent:
 
 - understands a requirement or issue from repository context;
-- modifies a component, simulator, or operational layer;
+- modifies a Device, simulator, or operational layer;
 - adds or updates tests;
 - injects or reproduces a failure;
 - produces a diagnosis and a reviewable correction;
@@ -265,7 +265,7 @@ Demonstrate at least one end-to-end case in which an agent:
 
 This is a more meaningful proof of the Synqaro hypothesis than a large feature list.
 
-SRT should become a documented reference implementation: not merely a deployment, but an example showing how to integrate devices, customize operations, test faults, and adapt the platform.
+SRT should become a documented reference implementation: not merely a deployment, but an example showing how to integrate hardware, customize operations, test faults, and adapt the platform.
 
 ## 9. Validation with Medicina, Noto, and Einstein Telescope
 
@@ -273,7 +273,7 @@ SRT should become a documented reference implementation: not merely a deployment
 
 Medicina and Noto should be considered while SRT is developed, but the project should not attempt to build three full systems simultaneously.
 
-They are valuable because the three INAF radio telescopes share a control-system lineage and common interfaces while using different configurations and, in some cases, different component implementations. Use those differences to test whether:
+They are valuable because the three INAF radio telescopes share a control-system lineage and common interfaces while using different configurations and, in some cases, different Device implementations. Use those differences to test whether:
 
 - the same core and contracts support multiple configurations;
 - alternative implementations can preserve a shared interface;
@@ -297,7 +297,7 @@ An ET or industrial prototype is strategically important because it can show whe
 Safety is layered and must never depend solely on an AI model.
 
 1. **Hardware and PLC protections** remain independent of Synqaro and continue to operate if the entire software system fails.
-2. **Component protections** validate command parameters and enforce configured operating limits and monitored thresholds.
+2. **Device protections** validate command parameters and enforce configured operating limits and monitored thresholds.
 3. **System-level safety services** observe global conditions and may interrupt normal operations, reject commands, or trigger protective actions such as parking an antenna. Their authority must take precedence over ordinary orchestration.
 4. **Domain safety policy** defines facility-specific decisions, such as weather thresholds or loss-of-communications procedures.
 5. **Agent permissions** restrict which data and tools an agent may access. Safety checks remain in deterministic services even when an agent proposes an operation.
@@ -318,19 +318,19 @@ The following history prevents old assumptions from returning as if they were un
 | Lead with distributed-control features as innovations | Treat them as baseline capabilities; emphasize the integrated agentic lifecycle and verifiability | Comparable frameworks already provide many traditional features |
 | Generalize the system and observing layer from the outset | Generalize only proven common mechanisms; build the SRT observing layer first | Premature abstraction would recreate unwanted complexity |
 | Treat the technical layer as a second orchestrator | Treat it primarily as a diagnostic and authorized low-level interface unless evidence demands more | User interface and orchestration are separate responsibilities |
-| Assume the current Boss hierarchy should be retained | Use it only as reference behavior; prototype alternatives after component work | The hierarchy may be unnecessarily rigid |
+| Assume the current Boss hierarchy should be retained | Use it only as reference behavior; prototype alternatives after Device work | The hierarchy may be unnecessarily rigid |
 | Consider an agent's persistent memory as project knowledge | Store authoritative knowledge in versioned documents, contracts, tests, code, and telemetry | Models and sessions are replaceable and context is finite |
 | Build around Hermes Agent | Treat Hermes only as a candidate Smith implementation or interface reference | Smith and models must remain interchangeable |
 | Make the AI layer part of the critical control path | Keep control deterministic and functional without Smith | Reliability, safety, and technology independence |
 | Permanently integrate every agent-generated tool | Separate temporary analysis, verified reusable tools, and permanent extensions | Prevent uncontrolled complexity and unsafe privilege growth |
 | Let funding opportunities determine the roadmap | Develop Synqaro independently; pursue a call only when genuinely aligned | Architecture and timing should serve the project, not a call |
 | Claim that humans will no longer program or that Synqaro is unique | Design for extensive delegation while retaining verification; make only evidence-supported novelty claims | Strategic ambition must not become an unsupported assertion |
-| Keep component/process mapping open for the prototype | Run each component as a separate operating-system process; keep containers optional | Creates an independently restartable, measurable failure boundary without defining components as containers |
-| Choose component technology from access to scientific libraries | Use Python with `asyncio` for prototype simplicity, code-first APIs, testing, and asynchronous device I/O; retain Go as a measured production alternative | Low-level components should not absorb scientific processing, and language replacement must remain possible behind stable APIs |
-| Define a separate gRPC/Protobuf IDL for every component | Use FastAPI/Pydantic HTTP APIs with generated OpenAPI and JSON Schema in the prototype | Avoids a second per-component contract representation until performance or multi-language evidence justifies it |
-| Infer a component interface from arbitrary implementation details | Require explicit Python types and deliberately exported endpoints | Discovery and schemas must be inspectable, testable, and versionable |
+| Keep Device/process mapping open for the prototype | Run each Device as a separate operating-system process; keep containers optional | Creates an independently restartable, measurable failure boundary without defining Devices as containers |
+| Choose Device technology from access to scientific libraries | Use Python with `asyncio` for prototype simplicity, code-first APIs, testing, and asynchronous hardware I/O; retain Go as a measured production alternative | Low-level Devices should not absorb scientific processing, and language replacement must remain possible behind stable APIs |
+| Define a separate gRPC/Protobuf IDL for every Device | Use FastAPI/Pydantic HTTP APIs with generated OpenAPI and JSON Schema in the prototype | Avoids a second per-Device contract representation until performance or multi-language evidence justifies it |
+| Infer a Device interface from arbitrary implementation details | Require explicit Python types and deliberately exported endpoints | Discovery and schemas must be inspectable, testable, and versionable |
 | Use direct WebSocket fan-out or a custom FastAPI broker for internal state | Use Core NATS publish/subscribe internally and WebSocket at the external Core/State Service edge | Separates many-to-many internal distribution from UI/client delivery and avoids building a broker |
-| Use PostgreSQL as the live-state or command path | Keep authoritative live state in component/Core memory, distribute it through NATS, and use PostgreSQL for selected history | Database availability must not block device communication, live state, or commands |
+| Use PostgreSQL as the live-state or command path | Keep authoritative live state in Device/Core memory, distribute it through NATS, and use PostgreSQL for selected history | Database availability must not block hardware communication, live state, or commands |
 | Add Redis Pub/Sub or ZeroMQ to the initial stack | Do not add either without demonstrated need beyond the selected NATS baseline | Avoids overlapping infrastructure and additional topology, discovery, reconnect, and fan-out policy |
 | Optimize state payloads before measuring them | Start with inspectable JSON and adopt binary encoding only if benchmarks justify it | Simplicity and diagnosis take priority until payload cost is demonstrated |
 
@@ -339,8 +339,8 @@ The following history prevents old assumptions from returning as if they were un
 - Do not select technologies merely because they are fashionable. Interfaces and verification matter more than current tool popularity.
 - Do not require Smith, a particular model, or an external network for deterministic control.
 - Do not put domain concepts into the core without cross-domain evidence.
-- Do not make every component a separate container by definition.
-- Do not require the complete system to develop or test an individual component.
+- Do not make every Device a separate container by definition.
+- Do not require the complete system to develop or test an individual Device.
 - Do not treat simulator success as proof of hardware correctness.
 - Do not permit AI-generated numerical results to bypass deterministic computation.
 - Do not replace independent hardware safety with software or AI controls.
@@ -354,20 +354,20 @@ These decisions should be resolved through focused prototypes, measurements, and
 
 ### Core and communication
 
-- What exact command, state, long-running operation, result, and error envelopes work for the three prototype components?
+- What exact command, state, long-running operation, result, and error envelopes work for the three prototype Devices?
 - What quality vocabulary, timestamp/unit policy, and schema-compatibility rules apply to the generated OpenAPI/JSON Schema APIs and NATS publications?
 - What NATS subject conventions, authorization boundaries, and recovery rules are required for missed ephemeral state?
 - When do state publications use complete snapshots/groups rather than deltas?
 - Which orchestration mechanisms belong in optional common services, and which remain in domain layers?
 - How should registry leases, cached resolution, high availability, process supervision, packaging, and deployment be implemented?
-- What benchmark result would justify Go components, gRPC/Protobuf, or binary payload encoding instead of the prototype baseline?
+- What benchmark result would justify Go Devices, gRPC/Protobuf, or binary payload encoding instead of the prototype baseline?
 
 ### Data and diagnosis
 
 - How should durability be divided between NATS JetStream and PostgreSQL for alarms, command results, audit records, and other non-lossy events?
 - Which telemetry sampling, downsampling, retention, and query policies are appropriate for PostgreSQL history?
 - What correlation and provenance model connects commands, events, alarms, tests, issues, and deployments?
-- How will error taxonomies remain consistent across device families and sites?
+- How will error taxonomies remain consistent across hardware families and sites?
 
 ### Security and safety
 
@@ -416,12 +416,12 @@ The project owner expects the following working style:
 
 ## 15. Recommended next step
 
-Use the [Synqaro Component Architecture](component.md) to build the first measurable architecture slice: separate receiver, backend, and mount component processes; their protocol-compatible simulators; NATS; one small Core process; and PostgreSQL only when history is introduced.
+Use the [Synqaro Device Architecture](device.md) to build the first measurable architecture slice: separate receiver, backend, and mount Device processes; their protocol-compatible simulators; NATS; one small Core process; and PostgreSQL only when history is introduced.
 
-The slice should prove the documented acceptance criteria, especially independent restart, logical-name resolution, direct validated commands, representative 20 Hz mount state fan-out, stale/restart/out-of-order detection, live operation during database failure, distinct device/process failures, and reproducible fault injection. Only after that evidence exists should Synqaro expand orchestration or split the initial Core roles.
+The slice should prove the documented acceptance criteria, especially independent restart, logical-name resolution, direct validated commands, representative 20 Hz mount state fan-out, stale/restart/out-of-order detection, live operation during database failure, distinct hardware failures and Device process failures, and reproducible fault injection. Only after that evidence exists should Synqaro expand orchestration or split the initial Core roles.
 
 ## 16. Architecture document index
 
 - [Synqaro Project Vision v0.9](project_vision.md) — authoritative project intent, scope, principles, and validation strategy.
-- [Synqaro Component Architecture](component.md) — prototype component boundary, process model, communication, state, persistence, configuration, validation, and open questions.
+- [Synqaro Device Architecture](device.md) — prototype Device boundary, process model, communication, state, persistence, configuration, validation, and open questions.
 - [AI Project Context and Handoff](ai_project_context.md) — rationale, decision history, collaboration rules, and open project-wide questions.
