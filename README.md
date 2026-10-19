@@ -11,7 +11,3 @@ AI-native control and engineering platform for complex distributed systems.
 ### Architecture
 
 - [Device Architecture](docs/device.md)
-
-### Benchmarks
-
-- [Tango](docs/benchmark_tango.md)
