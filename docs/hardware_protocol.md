@@ -15,6 +15,16 @@ Message structure and general behavior are shared across hardware types. Each ha
 
 The protocol is intended for control and diagnostics, not bulk data transfer.
 
+### Why Generic Verbs
+
+The protocol uses a fixed set of verbs instead of a separate verb for every hardware capability. Properties are selected through `name`, assigned through `value`, and accessed through `get` and `set`. Procedures are selected through `name`, started through `run`, and inspected through `status`.
+
+This provides a uniform interaction model across hardware types. The communication library handles framing, request identifiers, responses, errors, and timeouts without per-property or per-procedure branches. Hardware-specific specifications and firmware handlers still define supported functionality, validation, and effects.
+
+Explicit hardware-specific verbs could also be carried by a generic communication library. The reason for choosing generic verbs is the consistent interface and validation structure, not an assumption that explicit verbs necessarily require library changes.
+
+Using literal `name` and `value` keys makes the property-selection structure predictable: the target property is not inferred from field order or from whichever field key happens to match a property. This also avoids collisions between property names and qualifiers such as `unit`. The additional bytes are accepted in exchange for simpler implementation, generation, and testing.
+
 ## Message Format
 
 Messages use ASCII characters, begin with `#`, and end with a single LF character, represented here as `\n`.
@@ -64,20 +74,44 @@ In both examples, the client assigns `id`, and the response echoes it to identif
 
 ## Names, Values, and Separators
 
-- Verbs and field names are case-sensitive.
-- Names start with a lowercase letter and contain lowercase letters, digits, or `_`.
-- Every field uses `name=value`. Positional parameters are not supported.
-- Commas separate fields. Field order does not affect meaning.
-- A name must not occur twice within the same section.
+- Verbs and field keys are case-sensitive.
+- Verbs and field keys start with a lowercase letter and contain lowercase letters, digits, or `_`.
+- Every field consists of a key, followed by an equals sign (`=`), followed by its value. Positional parameters are not supported.
+- Commas outside quoted strings and lists separate fields. Field order does not affect meaning.
+- A key must not occur twice within the same section.
 - The decimal separator is always `.`, regardless of system locale.
 - Boolean values are `true` and `false`.
-- Simple values may be unquoted. Values containing spaces, commas, or structural delimiters must be enclosed in double quotes.
+- Simple scalar values may be unquoted. String values containing spaces, commas, or structural delimiters must be enclosed in double quotes. Lists use the syntax defined below and are not enclosed in quotes.
 - Within quoted strings, `\"` represents a double quote and `\\` represents a backslash.
 - Control characters and embedded newlines are not allowed.
 - Colons within values in the fields section, such as timestamps, do not require escaping.
 - Spaces around `=`, `,`, and the separating `:` are allowed and have no meaning outside quoted strings. Tabs and CR characters are not allowed.
 
 Quoted values such as `"true"` and `"100"` are strings. Each property or parameter specification defines its required type.
+
+For example, in `name=frequency`, the key is `name` and its value is `frequency`. In `value=100`, the key is `value` and its value is `100`.
+
+### List Values
+
+A property value may be a scalar or a flat list. Lists use square brackets, with comma-separated scalar elements and optional spaces around elements:
+
+```text
+#set <id=12>: name=frequencies, value=[100, 105.3, 77.99], unit=GHz\n
+```
+
+The key remains `value`, not `values`, regardless of whether the property contains a scalar or a list. The same list syntax applies when returning a property value. Nested lists are not supported.
+
+Commas inside a list separate elements, while commas outside lists and quoted strings separate fields. Quoted string elements follow the same escaping rules as scalar strings. A parser must recognize quoted strings and list boundaries; splitting a message on every comma is not valid.
+
+Each property's hardware specification defines:
+
+- the permitted element types and value constraints;
+- the required list length or allowed length range, including whether an empty list is valid;
+- the meaning of element positions, or whether element order is irrelevant.
+
+For example, a property could require exactly three numeric values, with positions corresponding to channels 1, 2, and 3. This is an illustration, not a requirement for the fictitious receiver. Positional meaning does not imply that numeric values must be sorted.
+
+A list is the value of one property. Updates to different properties use separate `set` requests; list syntax does not introduce batching or atomic updates across properties.
 
 ## Metadata and Request Identification
 
