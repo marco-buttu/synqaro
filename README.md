@@ -10,4 +10,5 @@ AI-native control and engineering platform for complex distributed systems.
 
 ### Architecture
 
+- [Hardware Protocol](docs/hardware_protocol.md)
 - [Device Architecture](docs/device.md)
