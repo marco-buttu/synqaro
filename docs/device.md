@@ -233,10 +233,27 @@ A Device configuration remains small:
 - HTTP listen address;
 - registry address;
 - NATS address;
-- hardware timeouts and polling settings; and
-- approved operating limits.
+- hardware timeouts and polling settings;
+- per-property observation-cache policy and monitoring thresholds; and
+- optional approved operating restrictions, where needed.
 
 Device configuration contains no PostgreSQL address or database credentials.
+
+### 10.1 Hardware capabilities and Device-owned policy
+
+Keep hardware capabilities separate from deployment/operational policy. For the fictitious receiver, the hardware protocol's read-only `configuration` descriptor supplies identity, firmware build, supported properties/procedures, numeric characteristics, and firmware limits. Read it on connection/reconnection and validate compatibility. Only an explicit declaration that this discovery is unsupported permits a matched approved static profile; timeouts, malformed responses, unknown identity, or incompatible protocol versions do not silently select file values. Firmware still enforces its own constraints. Optional operating restrictions may narrow capabilities, never override them to expand what the apparatus can do; the first receiver prototype needs no additional restriction layer.
+
+The Device owns observation reuse. Its persistent configuration can override the default **500 ms** cache reuse interval for each property; **zero disables caching**. This is separate from polling cadence. Track local reuse age with a monotonic clock, retain the original hardware acquisition timestamp/quality, and never label cached data as a new acquisition. A cache hit makes no hardware request. Invalidate on known changes, communication loss, or conditions that make a value unreliable; the TTL cannot hide a known fault or establish scientific-data timing. Do not reuse frequency observations during autonomous tuning or uncertain-outcome recovery merely because their TTL has not expired. Reacquire when allowed, or report unavailability. The fictitious firmware itself has no extra acquisition cache, and its descriptor does not configure the Device cache.
+
+A read-only physical measurement can have writable monitoring policy: LNA temperature is observable, while its warning/alarm thresholds can be changed without restarting the Device. Those supervisory thresholds do not replace independent firmware/PLC protections. Not every setting is automatically hot-reloadable; hardware capability limits are not made dynamically writable by placing them in a Device file.
+
+### 10.2 Persistence and incident-time reconstruction
+
+Persist Device configuration across restart, but distinguish persistence from historical evidence of actual use. The system must be able to relate incident-time software deployments/builds, hardware/firmware identity, descriptor or approved profile, and the effective configuration revision and content. A Git commit alone does not prove when code was deployed or a file applied. Distinguish requested, applied, and saved changes; preserve activation evidence and time provenance, and relate measurements/events to the effective revision. Retain referenced artifacts/content rather than hashes alone. Persisting policy does not restore stale measurements, prove prior procedure success, or authorize replay of hardware commands.
+
+The concrete configuration format/update API, consistent multi-setting activation, storage and audit mechanism, revision/retention details, and crash/network/storage durability guarantees remain open. In particular, the asynchronous selected-history path in section 9 is not already a guarantee of lossless configuration audit. Requirements for local durable buffering versus explicitly incomplete history must be decided before such guarantees are advertised. No new central configuration service or direct Device-to-PostgreSQL dependency is introduced by this requirement.
+
+See [Hardware Protocol](hardware_protocol.md) for the approved prototype profile, staged recovery, and the explicit deferred configuration/history topics. The next implementation step is the standalone hardware simulator and conformance tests, not completion of the whole configuration/history architecture.
 
 ## 11. Health, safety, and timing semantics
 
