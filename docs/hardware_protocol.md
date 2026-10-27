@@ -1,5 +1,7 @@
 # Hardware Protocol
 
+**Status:** protocol version 1 and an approved fictitious-receiver profile, ready to guide the first simulator. This document specifies behavior; it does not claim that firmware, libraries, or conformance tests are already implemented.
+
 ## Purpose
 
 This protocol provides a common text-based interface for controlling different types of hardware over TCP.
@@ -47,7 +49,7 @@ Angle brackets are transmitted literally. Metadata and fields use named values:
 #verb <key=value, key=value>: key=value, key=value\n
 ```
 
-Metadata is mandatory. Fields are optional; when absent, the colon is omitted.
+Metadata is mandatory for requests and ordinary responses. Fields are optional; when absent, the colon is omitted. The only response without metadata is the diagnostic `#error: code=INVALID_ID\n`, when a complete request has no reliably recoverable valid ID. It is not an unsolicited notification and cannot complete a pending request.
 
 ### Quick Examples
 
@@ -58,7 +60,7 @@ REQUEST:
 #set <id=10>: name=frequency, value=5.5, unit=GHz\n
 
 RESPONSE:
-#ok <id=10>\n
+#ok <id=10>: name=frequency, value=5.5, unit=GHz\n
 ```
 
 The client requests a frequency change. `ok` confirms that the setting has been applied.
@@ -96,6 +98,22 @@ Quoted values such as `"true"` and `"100"` are strings. Each property or paramet
 
 For example, in `name=frequency`, the key is `name` and its value is `frequency`. In `value=100`, the key is `value` and its value is `100`.
 
+### Numeric Syntax
+
+The common numeric grammar is:
+
+```text
+[+-]?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?
+```
+
+This regular expression describes an entire unquoted numeric token, using ASCII digits. The sign is optional. A decimal point requires at least one digit on each side. An exponent requires at least one digit after its optional sign. There are no spaces within a numeric token.
+
+Valid examples are `5`, `+5`, `-5`, `0.5`, `005.50`, `5.5e0`, `1E-6`, and `2e+3`. All numbers are base ten: `010` means ten, never octal. `.5`, `5.`, `1e`, `NaN`, `Inf`, and `Infinity` are not valid numbers. Quoting a token makes it a string, not a number.
+
+These rules apply to numeric fields in requests, responses, and lists. Each field still defines its type, range, unit, and representability constraints. Fields declared as integers use decimal digits without a fraction or exponent, with a sign only where their contract permits one. Request IDs and timestamps retain their dedicated formats.
+
+Syntactically valid input does not require unlimited numeric range or precision. Values outside the field's range or representational capacity must be rejected explicitly; conversion must never silently produce infinity, zero through underflow, or a different value. Property-specific approximation is allowed only when declared, as for the receiver's frequency. Exact decimal arithmetic or an equivalent scaled-integer implementation must preserve the decisions at range and rounding boundaries; a language's permissive floating-point parser is not the grammar.
+
 ### List Values
 
 A property value may be a scalar or a flat list. Lists use square brackets, with comma-separated scalar elements and optional spaces around elements:
@@ -125,12 +143,46 @@ Every request includes the mandatory `id` metadata field. Its response echoes th
 The identifier:
 
 - is assigned by the client;
-- is a decimal integer between `1` and `4294967295`;
+- consists of ASCII decimal digits and has a numeric value between `1` and `4294967295`; signs, fractions, and exponents are not permitted;
 - identifies a request within one TCP connection;
-- must not be reused on the same connection, preventing ambiguity with delayed responses;
+- must be strictly greater than the maximum valid ID already received on that connection; gaps are allowed, but reuse and decreasing IDs are not;
 - does not identify a procedure execution across reconnections.
 
 Different connections may use identical identifiers. There is no `operation_id`.
+
+The library normally generates `1, 2, 3, ...` in actual send order. Leading zeros do not create a different ID: comparisons and correlation are numeric. The firmware starts with a high-water mark of zero. Once a complete message has an unambiguous valid ID greater than that mark, it advances the mark before other request validation or admission checks. Thus an ID is consumed even if its request is subsequently rejected. Invalid or non-increasing IDs do not advance the mark.
+
+Requiring increasing rather than consecutive IDs lets a client skip a reserved number without resynchronizing the session. It also lets the firmware detect retired IDs with one high-water mark instead of retaining every request forever. Responses may still arrive out of order. At ID exhaustion, the client drains pending requests and establishes a new connection rather than wrapping on the existing one. If draining times out, no new probe ID is available: close and reconnect directly, preserving uncertain outcomes and never replaying old operations.
+
+### Non-increasing IDs
+
+A complete request whose ID is not greater than the high-water mark is rejected without hardware effects. The connection stays open:
+
+```text
+REQUEST, AFTER ID 17 HAS ALREADY BEEN RECEIVED:
+#run <id=17>: name=calibrate\n
+
+RESPONSE:
+#error <id=17>: code=ID_NOT_INCREASING, last_id=17, rejected_verb=run, rejected_name=calibrate, received_at=2026-10-27T10:15:30.123Z\n
+```
+
+`rejected_verb` identifies the rejected request's verb when recoverable. `rejected_name` identifies its property or procedure when present and recoverable; it is absent for `reboot`. `received_at` is optional and records when the complete rejected request was received, only when that UTC time is trustworthy. Do not echo arbitrary full requests into diagnostics.
+
+`ID_NOT_INCREASING` replaces the earlier proposed `DUPLICATE_ID`: it covers both repeated and decreasing identifiers. The library treats it as a rejection diagnostic for the new occurrence, **not** as completion or failure of any original pending request with that ID. The original request proceeds normally, and its ordinary response may arrive before or after this diagnostic. Other errors must not use this reserved code merely to bypass normal correlation.
+
+### Missing or Invalid IDs
+
+If a complete, bounded message lacks an unambiguous valid ID, the firmware does not execute it and returns:
+
+```text
+REQUEST:
+#get: name=frequency\n
+
+RESPONSE:
+#error: code=INVALID_ID\n
+```
+
+The connection remains open. The library records an uncorrelated diagnostic without completing a pending request. No synthetic ID such as zero is assigned. This exception does not apply to oversized or timed-out incomplete frames, which require closure.
 
 Multiple metadata fields are separated by commas. An optional `client_id` may provide attribution and diagnostic context. It does not change response correlation or grant ownership or exclusive control.
 
@@ -138,7 +190,7 @@ Multiple metadata fields are separated by commas. An optional `client_id` may pr
 
 | Verb | Purpose |
 |---|---|
-| `get` | Read the current value of a property |
+| `get` | Read a property, including the read-only hardware descriptor `configuration` |
 | `set` | Apply a property value within a bounded, short execution time |
 | `run` | Start a procedure |
 | `status` | Read general hardware state, or a procedure's state and retained outcome |
@@ -170,6 +222,8 @@ After `run` or `cancel`, the client queries the named procedure through `status`
 The hardware does not send unsolicited notifications. Even a procedure that finishes quickly follows the `run` acceptance-and-status model.
 
 An `ok` response to `status` may report a failed procedure: successful status retrieval and successful procedure execution are separate outcomes.
+
+The receiver profile defines each response's fields. Ordinary property reads use `value`; `get` of `configuration` instead returns the flat descriptor fields specified below, not a nested object or an encoded file.
 
 ## Procedure State
 
@@ -213,6 +267,10 @@ There is no separate limit on fractional digits; the maximum message length stil
 
 The number of fractional digits describes representation precision, not clock accuracy. Timestamps require a trustworthy clock. Unavailable or nonexistent timestamps must not be replaced with fabricated dates.
 
+The fictitious receiver uses the simulator host's UTC clock; host synchronization is an environment prerequisite, not a timing guarantee of this protocol. The simulator must also support an untrusted-clock fault scenario. New unreliable UTC timestamps are omitted, while existing event timestamps known to have been acquired reliably are retained. A missing timestamp for an event that never happened is not a clock fault.
+
+Because this receiver declares UTC-clock support, loss of clock trust is an explicit active fault, `CLOCK_UNTRUSTED`, visible through general status and the Device's diagnostic log/alarm state. Omitting timestamps alone is insufficient. This condition need not prevent UTC-independent operations or invalidate otherwise valid readings; operations requiring trustworthy UTC must be rejected while it persists. An apparatus that explicitly declares no UTC capability is not faulty merely for lacking it. No clock-setting or synchronization command is introduced here; synchronization mechanisms and trust assessment on real hardware remain platform-specific.
+
 ### Sample Timestamps
 
 `sampled_at` is the UTC timestamp at which the returned value was acquired from the hardware. It is not the time at which the response was generated or transmitted.
@@ -233,6 +291,8 @@ Otherwise, the field is omitted:
 
 Absence means that no trustworthy acquisition timestamp is available. It does not, by itself, invalidate the returned value. Clients do not need to enable this field. Each hardware specification declares which properties can provide `sampled_at`.
 
+For this receiver, an untrusted clock must additionally be reported as specified above. A Device may record its own receipt time, but must distinguish it from the hardware acquisition time rather than substituting it for `sampled_at`.
+
 ## Errors and Diagnostics
 
 An `error` response includes a stable symbolic `code`. It may include structured diagnostic fields and an optional textual `description`.
@@ -244,6 +304,65 @@ When `status` reports a failed procedure, its failure code appears in `error_cod
 Unsupported functionality, unknown fields, invalid values, and duplicate fields are explicitly rejected. Request validation occurs before hardware side effects.
 
 A failure during execution does not automatically guarantee that the previous hardware state remains unchanged.
+
+### Error Catalog and Human-readable Logs
+
+The common catalog reserves the codes below. Diagnostic field keys are part of the contract; quoted descriptions are not control inputs. A response uses the applicable code and fields rather than a free-text substitute.
+
+| Code | Meaning and principal structured context |
+|---|---|
+| `INVALID_ID` | No valid, unambiguous request ID; the response has no ID |
+| `ID_NOT_INCREASING` | Reused or decreasing ID; `last_id`, recoverable `rejected_verb` and `rejected_name`, optional `received_at` |
+| `MALFORMED_REQUEST` | Complete request has invalid syntax but a reliably recoverable valid ID |
+| `TOO_MANY_PENDING_REQUESTS` | Request exceeds the connection's admission limit; `limit` |
+| `UNKNOWN_VERB` | Verb is unsupported; `verb` |
+| `UNKNOWN_PROPERTY` | Property is unsupported; `parameter=name`, `value` |
+| `UNKNOWN_PROCEDURE` | Procedure is unsupported; `name` |
+| `READ_ONLY_PROPERTY` | A `set` targets a read-only property; `name` |
+| `MISSING_PARAMETER` | Required field absent; `parameter` |
+| `UNKNOWN_PARAMETER` | Unsupported field supplied; `parameter` |
+| `DUPLICATE_PARAMETER` | Field repeated within a section; `parameter` |
+| `INVALID_TYPE` | Value has the wrong type; `parameter`, `expected` |
+| `OUT_OF_RANGE` | Value outside the allowed interval; `parameter`, applicable `min`, `max`, and `unit` |
+| `UNSUPPORTED_UNIT` | Unit is not supported; `parameter=unit`, `expected` |
+| `INVALID_PARAMETER` | Other parameter constraint violated; `parameter`, symbolic `reason` |
+| `BUSY` | Current activity prevents the requested operation |
+| `VALUE_UNAVAILABLE` | Property currently cannot provide a valid value; symbolic `reason` |
+| `STATUS_UNAVAILABLE` | A usable status response cannot be obtained |
+| `HARDWARE_FAULT` | A known active fault prevents this operation |
+| `NOT_RUNNING` | Selected procedure is not active; `name` |
+| `NOT_CANCELLABLE` | Procedure or its current phase cannot accept cancellation; `name` |
+
+Codes are stable uppercase identifiers matching `[A-Z][A-Z0-9_]*`. The receiver-specific catalog adds:
+
+| Code | Meaning / default human-readable message |
+|---|---|
+| `FREQUENCY_LOCK_FAILED` | The synthesizer did not reach and verify the requested frequency within its allowed time |
+| `FREQUENCY_READ_FAILED` | The synthesizer frequency could not be read reliably |
+| `CALIBRATION_REFERENCE_UNAVAILABLE` | The calibration reference is unavailable |
+| `CALIBRATION_TIMEOUT` | Calibration exceeded its execution deadline |
+| `SCAN_TIMEOUT` | The scan exceeded its execution deadline |
+| `SYNTHESIZER_FAILURE` | Diagnostics confirm a synthesizer fault |
+| `STOP_TIMEOUT` | Controlled stop was not confirmed within its deadline |
+| `CLOCK_UNTRUSTED` | UTC clock is unavailable or untrusted; new UTC timestamps are omitted |
+
+Common codes also have human-readable catalog messages derived from their definitions, with applicable fields rendered into the log. Define codes, meanings, messages, and hardware-specific parameters together so documentation and generated firmware/library catalogs do not drift. An agent may implement and maintain them from the hardware team's reviewed contract; shared generation provides consistency, not proof that the physical specification is correct.
+
+The library accepts a syntactically valid hardware error even when its code is not built into the library. It preserves the original code, fields, and optional `description`, reports the request error, and does not reconnect, reboot, or retry merely because the code is unfamiliar. Contract validation can separately flag undeclared codes. The log combines a known catalog message with structured context and any supplied description; for an unknown code it explicitly says the code is unrecognized and preserves the supplied description when available. An operator must not need to search a source file to understand a known error. Include Device identity, request ID when known, verb/target when known, and receipt time with its provenance; sanitize and bound any diagnostic text.
+
+### Complete but Malformed Messages
+
+A complete request with a valid recoverable ID but malformed fields returns `MALFORMED_REQUEST`, has no hardware effects, and leaves the connection open. An optional description may explain the syntax problem. A correctly formed out-of-range value instead retains its specific validation error.
+
+```text
+REQUEST:
+#set <id=30>: name=frequency value=5, unit=GHz\n
+
+RESPONSE:
+#error <id=30>: code=MALFORMED_REQUEST\n
+```
+
+A malformed ordinary response with a trustworthy pending ID ends that request with a local protocol error, not a receiver-confirmed execution failure. The library preserves the evidence, does not update state from it, keeps other requests and the connection active, and sends no response to a response. A complete response that cannot be attributed safely is logged and discarded; outstanding requests retain their original deadlines. The defined uncorrelated `INVALID_ID` diagnostic is not itself malformed.
 
 ## TCP Framing, Limits, and Timeouts
 
@@ -273,6 +392,43 @@ A timeout or disconnection may leave a request's outcome uncertain. Neither prov
 
 Timeouts use a monotonic clock, independently of wall-clock adjustments.
 
+### Receiver Profile and Client Defaults
+
+These are concrete values for the fictitious receiver and its first client, not universal limits imposed on every hardware type:
+
+| Setting | Value | Owner / meaning |
+|---|---|---|
+| Maximum message, including LF | 4096 bytes | Firmware and library receive framing; requests and responses |
+| Incomplete-message deadline | 2000 ms | Each receiver of bytes; starts with the first byte, never extended by later bytes |
+| Ordinary response deadline | 2000 ms | Client; complete valid response after request transmission finishes |
+| TCP connection-attempt deadline | 2000 ms | Client; each initial or recovery connection attempt |
+| Pause after failed reconnection | 5000 ms | Client; first recovery attempt is immediate, later attempts wait after failure |
+| Pending requests per connection | 4 | Client admission and firmware enforcement; not running procedures after acceptance |
+| Procedure-status polling default | 500 ms | Client, configurable; not a firmware capability |
+| Frequency application and verification | 1000 ms | Firmware; one `set` or one scan-point tuning phase |
+| Calibration execution deadline | 30000 ms | Firmware; includes sequence, final checks, and frequency restoration |
+| Scan execution deadline | 20000 ms | Firmware; includes tuning, verification, and all holding intervals |
+| Controlled-stop deadline | 5000 ms | Firmware; additional to an expired execution deadline, or after accepted cancellation |
+
+4096 bytes provides room for a complete flat descriptor without adding fragmentation. Short messages do not become padded to that size; implementations must still bound per-connection resource use. Before discovery, the prototype library already enforces the known 4096-byte bootstrap ceiling. The advertised limit is checked against the library's supported/configured limits; it is not permission for unbounded allocation or automatic buffer expansion. Future larger profiles require an explicit compatible bootstrap policy, not oversized discovery messages.
+
+The response timer covers the entire response and is not restarted by partial bytes or by other requests' responses. For `run`, `cancel`, and `reboot`, it waits for `accepted` or `error`, not completion of the long activity. A response deadline and an incomplete-frame deadline are distinct: if a frame remains incomplete, its framing deadline still requires closure even if the associated request has already timed out.
+
+### Persistent Connections and Staged Recovery
+
+TCP connections are persistent, not opened and closed for each request. A normal `error` does not close a connection. Oversized frames and incomplete-frame timeouts do close it, because the framing contract has been violated.
+
+A single response timeout does **not** immediately close a well-framed connection. The library marks only that request timed out and leaves its outcome uncertain. It suspends new modifying requests, coalesces any concurrent recovery needs, and sends one general `status` probe with a new increasing ID and the ordinary response deadline. If IDs are exhausted, bypass the impossible probe and reconnect directly as specified above. It never retransmits the timed-out operation automatically.
+
+- If a usable probe response arrives, retain the connection. A reported hardware fault is still a successful communication probe, not proof of health. Read the affected property or procedure state as needed before dependent operations; a probe alone does not prove the original command's outcome.
+- If the probe fails or the transport/framing is broken, close the connection and begin reconnection. Outstanding requests without valid responses retain uncertain outcomes.
+- Attempt reconnection immediately, with a 2000 ms limit per TCP attempt and a 5000 ms pause after each failed attempt. Only one attempt runs at a time. Continue while the Device is running and the hardware link is requested; the Device remains reachable for status and diagnostics and explicitly reports the hardware link unavailable.
+- On reconnection, read `configuration` and general status before resuming operational writes, checking identity, protocol compatibility, current activity, and faults. Connection success is not proof of health. Do not replay old modifying commands.
+
+Reconnection resets the transport session only; it does not cancel procedures, clear faults, restore operating values, or reboot firmware. No automatic `reboot`, generic `reset`, or speculative `recover` is implied. A firmware that cannot process commands cannot reliably be repaired by sending another command through that same path; watchdogs and external reset belong to the separate protection design.
+
+There is no additional ten-second global reboot-verification timer. Reconnection and visible diagnostics continue until reachability returns; evidence of a new firmware execution is handled using `boot_id` in general status.
+
 ## Concurrent Access
 
 Multiple clients may communicate with the hardware. Firmware protects shared state and serializes incompatible changes.
@@ -280,6 +436,12 @@ Multiple clients may communicate with the hardware. Firmware protects shared sta
 A successful setting response confirms what was applied at that time. It does not prevent another client from changing it later.
 
 Each hardware specification declares incompatibilities between properties and procedures. The protocol does not implicitly provide request queues, procedure ownership, or exclusive control.
+
+The prototype permits four requests awaiting ordinary responses on one connection. The library rejects a fifth local submission rather than creating an implicit queue. If a faulty client nevertheless exceeds the firmware's limit, the firmware rejects only the excess request with `TOO_MANY_PENDING_REQUESTS, limit=4`, keeps the connection open, and continues accepted requests. An admission error does not consume a pending execution slot, but its valid increasing ID is still consumed. A procedure no longer occupies a pending-response slot after its `accepted` response is sent.
+
+Responses may arrive in a different order from requests; each has its own deadline and is matched by ID. The firmware may use simple sequential processing where sufficient. Clients requiring an execution dependency wait for actual completion of the earlier command or procedure, not merely for a later-numbered response. Shared hardware changes remain serialized or rejected according to their incompatibility rules.
+
+Late replies to timed-out requests are diagnostic evidence, not retroactive success and not automatic state updates. An ordinary response with an ID never sent, or a second ordinary response to an already completed request, is a protocol anomaly: record and discard it without completing another request or immediately closing the connection. Normal replies continue; silence invokes the staged timeout recovery. The special `ID_NOT_INCREASING` diagnostic is handled before ordinary pending-response matching so it cannot consume the original request.
 
 ## Worked Example: A Fictitious Receiver
 
@@ -289,13 +451,52 @@ The receiver exposes a `frequency` property and supports procedures such as cali
 
 In the exchanges below, `REQUEST` and `RESPONSE` are explanatory labels and are not transmitted. `\n` represents the message-terminating LF character.
 
+Each example block is an independent exchange or scenario unless a shared connection is explicitly described; repeated IDs across separate blocks do not instruct a client to reuse an ID.
+
+### Reading the Hardware Configuration
+
+`configuration` is a read-only descriptor of the connected apparatus, not a Device configuration file or an operation that changes firmware settings:
+
+```text
+REQUEST:
+#get <id=1>: name=configuration\n
+
+RESPONSE:
+#ok <id=1>: name=configuration, protocol_version=1, hardware_id="example-receiver-01", hardware_model=fictitious_receiver, firmware_version="0.1.0", firmware_build="example-build", readonly_properties=[configuration], readwrite_properties=[frequency], supported_procedures=[calibrate, scan], frequency_min=1, frequency_max=10, frequency_unit=GHz, frequency_resolution=0.000001, frequency_rounding=nearest_ties_up, max_message_bytes=4096, incomplete_message_timeout_ms=2000, max_pending_requests=4, max_tuning_ms=1000, calibrate_timeout_ms=30000, scan_timeout_ms=20000, procedure_stop_timeout_ms=5000, scan_points=10, scan_max_dwell_ms=1000, calibrate_cancellation=except_finalization, scan_cancellation=always, utc_clock_supported=true, sampled_at_properties=[frequency]\n
+```
+
+This is one ASCII line, terminated by one LF. Identity and build strings above are illustrative, not claims about installed firmware. Names of fields and the receiver-profile values in this example define its flat descriptor; no nested lists, embedded JSON, or truncation are used. The complete response must fit within the bootstrap/message limit. A future need for larger descriptions may justify section queries, but they are not part of this prototype.
+
+The descriptor declares:
+
+- **Identity:** `hardware_id` identifies the apparatus; `hardware_model` identifies its model; `firmware_version` is its human-facing version and `firmware_build` uniquely identifies the installed build. Release labels alone must not ambiguously identify different binaries.
+- **Protocol:** `protocol_version=1` identifies these common wire and interaction rules, independently of firmware release numbering. Compatible firmware bug fixes do not require a new protocol version. Unsupported protocol versions are explicit incompatibilities: do not enable operational writes by assuming compatibility or substituting a local profile.
+- **Property access:** every exposed property appears in exactly one of `readonly_properties` and `readwrite_properties`. Both support `get`; only the second supports `set`. The prototype has no write-only property class. These are capabilities, not user permissions or promises of availability in every activity. Listing a property twice is a descriptor error. `configuration` itself is read-only; attempting to set it is rejected.
+- **Procedures:** `supported_procedures` identifies supported `run` targets. Cancellation policies describe support, not permission to infer that an already completed procedure can still be cancelled.
+- **Frequency:** minimum, maximum, unit, grid resolution, and `nearest_ties_up` approximation, as defined below. Other hardware profiles define their own property characteristics; this document does not prescribe 1 kHz or GHz universally.
+- **Firmware limits:** message size, framing deadline, pending-request admission, tuning, procedure execution, controlled stop, fixed scan count, and maximum dwell. Their units appear in their field names where needed. Client connection/response deadlines, reconnect pauses, polling, and Device caching are not firmware settings.
+- **UTC capability:** whether trustworthy UTC is supported in principle, and which property acquisitions can supply `sampled_at`. Availability is assessed at runtime; declaration of support is not proof that the current clock is trusted. Boot identity, boot time, current faults, and activity belong to `status`, not this descriptor.
+
+Read and validate the descriptor on initial connection and reconnection. Validate required fields, types, ranges, coherent access lists, declared limits, and expected identity before resuming operational writes. Merely opening TCP is not application readiness. An incompatible or malformed descriptor remains an observable compatibility/conformance problem, not a reason to pretend that the hardware has a different configuration.
+
+### Hardware Authority, Local Profiles, and Device Configuration
+
+Firmware is authoritative for its physical capabilities and must enforce them even if the Device also validates requests. Do not duplicate or override them casually in a Device file. Optional installation-specific operating restrictions may narrow what Synqaro permits, never enlarge hardware capability; the prototype does not require additional restrictions. An inconsistent restriction/profile is reported, not silently clipped or substituted.
+
+For legacy hardware that explicitly reports `UNKNOWN_PROPERTY, parameter=name, value=configuration`, the Device may use an approved static profile matched to the expected apparatus/model/firmware using reliable deployment or identification information. If neither a usable descriptor nor a compatible approved profile is available, report the missing contract and disable affected operational writes; safe reads and diagnostics may remain available where their interface is known. A timeout, broken transport, malformed response, unknown identity, or incompatible protocol version does **not** trigger this fallback.
+
+The hardware team supplies a reviewed specification from which an agent can implement firmware, descriptors, validation, and error catalogs. Validate that specification and its implementation against real hardware independently; generating both sides from the same mistaken input does not establish correctness.
+
+Device-owned settings remain separate: connection target, client timeouts, polling, per-property cache policy, monitoring thresholds, and any optional operating restrictions. Temperature readings may be read-only while their monitoring thresholds are configurable. Supervisory thresholds do not replace hardware/PLC protections. Persistent configuration, live threshold changes, and historical reconstruction are requirements; file format, update interface, persistence/activation guarantees, and history storage remain explicit [open issues](#device-configuration-persistence-and-historical-reconstruction). No agent is required in the runtime control path.
+
 ### Setting the Frequency
 
 For this example, the `frequency` property accepts:
 
 - one numeric value, including integers and decimals;
 - values between `1` and `10`, inclusive;
-- the explicit unit `GHz`.
+- the explicit unit `GHz`;
+- a 1 kHz grid (`0.000001 GHz`), with approximation to the nearest grid value and ties to the higher frequency.
 
 Strings, booleans, and lists are not valid frequency values. The receiver does not implicitly convert units.
 
@@ -317,11 +518,21 @@ RESPONSE:
 #ok <id=10>: name=frequency, value=5.5, unit=GHz\n
 ```
 
-The response identifies the property and confirms its applied value. If the receiver cannot apply the requested value exactly according to the property's specification, it must not silently round it and report success.
+The response identifies the property and confirms its verified applied value, not merely the requested text. First validate the original numeric value against the interval; then approximate to the declared grid. Never use rounding to bring an out-of-range request back inside the interval. Equivalent forms such as `005.50` and `5.5e0` represent the same requested value.
+
+```text
+REQUEST:
+#set <id=21>: name=frequency, value=5.1234565, unit=GHz\n
+
+RESPONSE:
+#ok <id=21>: name=frequency, value=5.123457, unit=GHz\n
+```
+
+Rounding is explicit profile behavior, not truncation or a language-dependent floating-point side effect. The response always exposes the verified result. Applying and verifying one frequency must finish within `max_tuning_ms=1000`; failure returns `FREQUENCY_LOCK_FAILED` and does not establish what frequency remains applied.
 
 Setting the current frequency again is valid and returns `ok`. It does not start a separate procedure.
 
-Changing the operating frequency invalidates the calibration associated with the previous configuration. Setting the same frequency does not, by itself, invalidate calibration.
+Changing the operating frequency invalidates the calibration associated with the previous configuration. Setting the same effective grid frequency does not, by itself, invalidate calibration, even if the original numeric spelling or requested excess digits differ.
 
 #### Value Outside the Allowed Range
 
@@ -437,7 +648,7 @@ No complete response is received before the client timeout.
 
 The timeout is detected locally by the communication library. It is not an `error` response from the receiver.
 
-The client cannot infer whether the setting was applied. After communication is restored, it can read the current frequency and determine whether further action is necessary. A timeout alone must not be reported as a confirmed hardware execution failure.
+The client cannot infer whether the setting was applied. It follows staged recovery: one status probe before deciding whether to reconnect, then a fresh frequency read when permitted. It does not use a Device-cache hit to resolve an uncertain setting. A timeout alone must not be reported as a confirmed hardware execution failure.
 
 #### Multiple Clients
 
@@ -493,23 +704,17 @@ RESPONSE:
 #ok <id=31>: name=frequency, value=5.5, unit=GHz\n
 ```
 
-The value is available, but no trustworthy acquisition timestamp is available. Omitting `sampled_at` does not, by itself, invalidate the reading.
+The value is available, but no trustworthy acquisition timestamp is available. Omitting `sampled_at` does not, by itself, invalidate the reading. In this UTC-capable receiver, clock distrust is also visible through `CLOCK_UNTRUSTED` in general status and the Device's log/alarm state; timestamp omission must not hide the condition.
 
-#### Reading a Cached Value
+#### Device Cache Boundary
 
-If the firmware uses a cached acquisition, it preserves the original timestamp:
+The fictitious firmware has no additional acquisition cache: each wire-level `get frequency` reads its current simulated hardware state. The Device may reuse its own previously acquired observation according to its per-property configuration. A Device cache hit is **not** another TCP exchange and allocates no request ID.
 
-```text
-REQUEST:
-#get <id=32>: name=frequency\n
+The default maximum reuse interval is 500 ms, overridable per property; zero disables reuse. Measure the local reuse interval with a monotonic clock from receipt of the fresh reply. This interval does not certify absolute hardware sample age or clock synchronization. Keep the original acquisition timestamp and quality, never relabel a cached sample with the current time. Polling cadence is a separate setting.
 
-RESPONSE:
-#ok <id=32>: name=frequency, value=5.5, unit=GHz, sampled_at=2026-10-23T10:15:25Z\n
-```
+Invalidate a cached property on known changes, loss of the hardware connection, or conditions that make it unreliable. Invalidate frequency when a modifying attempt begins; do not seed an acquired-value cache merely from a requested `set`. During autonomous calibration/scan, uncertain-outcome recovery, or other known uncontrolled frequency changes, do not reuse frequency cache entries: acquire a new value when permitted or expose unavailability. A TTL is a reuse ceiling, not permission to hide a known fault or to guarantee that an external client has not changed the hardware meanwhile.
 
-The firmware may use the cached value only while it remains valid as a representation of the operating frequency. It must invalidate the cache when a configuration change or hardware condition makes that assumption unreliable.
-
-In particular, the last requested frequency must not be presented as an acquired value merely because it was stored by a previous `set`.
+The cache policy is persistent **Device** configuration, not a firmware setting and not part of hardware `get configuration`. Retaining a setting does not make cached measurements valid after restart or reconnect. The Device's concrete configuration API and cache-bypass interface remain implementation work; clients that need fresh observations must be able to request them without confusing a cache hit with a new hardware acquisition.
 
 #### Frequency Unavailable During Calibration
 
@@ -620,14 +825,23 @@ It does not modify the configuration, clear diagnostic information, or interrupt
 | `health` | `ok`, `fault`, or `unknown`, according to the receiver's diagnostic checks |
 | `activity` | `idle`, the current activity, or `unknown` if it cannot be determined |
 | `calibrated` | Whether a calibration is valid for the current configuration |
+| `boot_id` | Opaque identity of the current firmware execution; unchanged across reconnections, changed on every firmware restart |
 | `booted_at` | UTC timestamp of the current firmware execution's startup, when trustworthy |
-| `fault_code` | Symbolic diagnostic code when `health=fault` |
+| `fault_codes` | Always-present flat list of active, confirmed fault codes; empty when none are confirmed |
 
 `health=ok` does not imply that the receiver is calibrated or available for every operation. These are separate conditions.
 
 `calibrated` is a boolean. If calibration validity cannot be determined, the field is omitted rather than reporting a guessed value. `booted_at` follows the general timestamp availability rules.
 
 The operating frequency is read through `get`; this general status response does not duplicate it.
+
+`boot_id` answers **which firmware execution**; `booted_at` answers **when it began**. For this profile use a fresh opaque 32-character lowercase hexadecimal token per firmware start, independent of UTC, and compare it as a string. Example tokens below are illustrative. A simulated reboot must generate a new token even if the host process is reused. No procedure execution identity is introduced, and a changed token does not prove which client, watchdog, or external action caused the restart.
+
+General status determines health from synthesizer diagnostics, control/stop verification, and the declared UTC clock capability, not the last request result. Confirmed active faults take precedence (`fault`); with no confirmed fault, report `ok` only when required checks suffice, otherwise `unknown`. Validation errors, `BUSY`, `NOT_CANCELLABLE`, and lack of calibration are not faults by themselves. A calibration-reference failure need not make otherwise usable tuning faulty.
+
+`fault_codes` replaces the singular `fault_code`. It is a list of **current confirmed conditions**, not incident history. `health=fault` requires at least one code; an empty list with `health=unknown` is not evidence of health. Remove an active code only after checks confirm resolution, never merely because another command succeeds. Preserve incident history in diagnostics even after a condition clears. Faults may coexist, for example `[SYNTHESIZER_FAILURE, CLOCK_UNTRUSTED]`. Fault-specific operating restrictions apply; `health=fault` does not automatically block every operation.
+
+Activity describes the procedure lifecycle and verified stop state. Report `idle` only when no procedure is active and no stop remains unconfirmed. Report `calibrating` or `scanning` while that execution remains active, including during `cancelling`; the specific cancellation state belongs to the procedure status. Use `unknown` if actual activity cannot be established. An unconfirmed stop after its deadline adds `STOP_TIMEOUT`; keep the known activity if execution is confirmed continuing, otherwise report `unknown`. A stopped software task alone is not proof of a stopped apparatus. Short-command preconditions and transient tuning availability remain separate from the long-procedure activity field.
 
 #### Available Receiver, Not Calibrated
 
@@ -636,7 +850,7 @@ REQUEST:
 #status <id=50>\n
 
 RESPONSE:
-#ok <id=50>: health=ok, activity=idle, calibrated=false, booted_at=2026-10-23T09:00:00Z\n
+#ok <id=50>: health=ok, activity=idle, calibrated=false, fault_codes=[], boot_id="11111111111111111111111111111111", booted_at=2026-10-23T09:00:00Z\n
 ```
 
 The receiver reports no known fault and no activity in progress. It does not currently have a valid calibration.
@@ -650,7 +864,7 @@ REQUEST:
 #status <id=51>\n
 
 RESPONSE:
-#ok <id=51>: health=ok, activity=calibrating, calibrated=false, booted_at=2026-10-23T09:00:00Z\n
+#ok <id=51>: health=ok, activity=calibrating, calibrated=false, fault_codes=[], boot_id="11111111111111111111111111111111", booted_at=2026-10-23T09:00:00Z\n
 ```
 
 An activity is running, but this is not itself a fault. Restrictions on other requests depend on the activity's contract.
@@ -664,7 +878,7 @@ REQUEST:
 #status <id=52>\n
 
 RESPONSE:
-#ok <id=52>: health=fault, activity=idle, calibrated=false, fault_code=SYNTHESIZER_FAILURE, booted_at=2026-10-23T09:00:00Z\n
+#ok <id=52>: health=fault, activity=idle, calibrated=false, fault_codes=[SYNTHESIZER_FAILURE], boot_id="11111111111111111111111111111111", booted_at=2026-10-23T09:00:00Z\n
 ```
 
 `ok` means that the status query succeeded. `health=fault` means that the receiver reports a hardware fault.
@@ -678,10 +892,10 @@ REQUEST:
 #status <id=53>\n
 
 RESPONSE:
-#ok <id=53>: health=ok, activity=idle, calibrated=false\n
+#ok <id=53>: health=fault, activity=idle, calibrated=false, fault_codes=[CLOCK_UNTRUSTED], boot_id="22222222222222222222222222222222"\n
 ```
 
-The receiver can report its state but cannot provide a trustworthy startup timestamp. The missing timestamp does not invalidate the other fields.
+This execution began without trustworthy UTC, so `booted_at` is absent and `CLOCK_UNTRUSTED` is explicit. The receiver can still report its boot identity and operating state. If the clock instead becomes untrusted after a reliably timestamped boot, retain that historical `booted_at` while omitting unreliable new timestamps. The fault remains visible while clock trust is absent.
 
 #### Status Cannot Be Determined
 
@@ -715,7 +929,9 @@ For this fictitious receiver:
 - the starting operating frequency is saved and restored before success is declared;
 - failure or cancellation leaves the receiver uncalibrated.
 
-The receiver accepts no additional calibration parameters in this example.
+The receiver accepts no additional calibration parameters in this example. Normal simulated execution is approximately 10 seconds; the firmware deadline is 30 seconds from actual execution start, including final checks and restoration of the saved frequency. The normal duration is not a success criterion or a fabricated progress source. It remains independent of the client's two-second acceptance-response deadline.
+
+Calibration accepts cancellation during its ordinary sequence but has a brief final coefficient-application/finalization phase that rejects client cancellation with `NOT_CANCELLABLE`. No stop timer starts for a rejected cancellation. The execution deadline still applies during that phase; a deadline-triggered stop is handled according to the controlled-stop rules, never hidden behind an indefinitely non-cancellable phase. Exact simulator phase scheduling is implementation detail to document with its tests.
 
 #### Starting Calibration
 
@@ -853,7 +1069,7 @@ RESPONSE:
 
 #### Excessive Execution Time
 
-The procedure has a documented maximum execution time. If that limit is exceeded, the firmware attempts a controlled stop.
+At 30 seconds without completion, the firmware initiates a controlled stop with an additional five-second deadline. The 30-second limit is not a claim that hardware is already stopped. Do not declare failure as a completed procedure until execution is confirmed stopped.
 
 After execution has stopped, it records failure:
 
@@ -862,10 +1078,10 @@ REQUEST:
 #status <id=68>: name=calibrate\n
 
 RESPONSE:
-#ok <id=68>: name=calibrate, state=failed, started_at=2026-10-23T10:20:00Z, finished_at=2026-10-23T10:20:30Z, error_code=CALIBRATION_TIMEOUT\n
+#ok <id=68>: name=calibrate, state=failed, started_at=2026-10-23T10:20:00Z, finished_at=2026-10-23T10:20:32Z, error_code=CALIBRATION_TIMEOUT\n
 ```
 
-If the hardware cannot be stopped or its condition cannot be determined, the firmware must expose the fault or uncertainty rather than declare the receiver idle.
+Here execution was actually stopped two seconds after the execution deadline. If stop is still unconfirmed after five seconds, expose `STOP_TIMEOUT` through general status and preserve the known activity or report `unknown`, rather than declaring `idle`, `failed` as a completed execution, or `cancelled`. Prevent incompatible operations while stopping or uncertainty persists.
 
 The communication library independently limits how long it waits. Its own timeout does not prove that calibration has failed or stopped.
 
@@ -913,35 +1129,37 @@ This example performs tuning only. It does not acquire a spectrum or produce sci
 | Parameter | Meaning |
 |---|---|
 | `name` | Must be `scan` |
-| `start` | First frequency |
-| `stop` | Last frequency, included in the sequence |
-| `step` | Positive frequency increment magnitude |
+| `start` | Requested first frequency |
+| `stop` | Requested last frequency, included after declared grid rounding |
 | `unit` | Must be `GHz` |
-| `dwell_ms` | Positive integer specifying the holding time at each frequency |
+| `dwell_ms` | Decimal integer from 1 through 1000 specifying holding time at each frequency |
 
-Both endpoints must lie within the receiver's allowed frequency range. Direction follows the endpoints: ascending when `stop > start`, descending when `stop < start`.
+This receiver always uses **10 distinct points**, including both endpoints. There is no `step` or variable point-count parameter. This replaces the earlier variable-step/1000-point proposal; the fixed count reduces prototype inputs while retaining tuning, holding, cancellation, and failure scenarios.
 
-The distance between endpoints must be an exact multiple of `step`. The receiver rejects incompatible parameters rather than silently changing the step or endpoint. Decimal arithmetic must not introduce extra or missing points through floating-point rounding.
+Validate the original endpoints within 1 through 10 GHz before rounding them to the 1 kHz grid using `nearest_ties_up`. Let the rounded endpoint grid indices be `a` and `b`. For `i` from 0 through 9, compute the nominal frequency at `a + i * (b - a) / 9` and round it to the nearest supported grid index, with ties to the higher frequency. Use exact rational/decimal or equivalent integer arithmetic, not accumulated floating-point increments. The first and last targets equal the rounded endpoints; direction may be ascending or descending. Effective adjacent steps may differ by one grid increment: exact equidistance is not promised.
 
-Equal endpoints produce a single-point scan.
+Reject the request if the generated sequence is not strictly monotonic and distinct. This requires a rounded endpoint span of at least nine grid increments (9 kHz); equal or collapsed endpoints do not create a special one-point scan. There is no requirement that the span be exactly divisible by nine.
 
-The number of points and total execution time must remain within the receiver's documented limits.
+Before acceptance, validate the conservative duration budget `10 * (max_tuning_ms + dwell_ms) <= scan_timeout_ms`. With the declared limits this gives `dwell_ms <= 1000`. The budget uses the maximum allowed tuning and verification time, not its average; actual faster tuning does not add padding to reach 20 seconds. The 20-second execution deadline is still enforced if runtime delays or faults occur. It is an operational deadline, not a hard-real-time guarantee.
 
 #### Starting a Scan
 
 ```text
 REQUEST:
-#run <id=100>: name=scan, start=5, stop=5.2, step=0.1, unit=GHz, dwell_ms=1000\n
+#run <id=100>: name=scan, start=5, stop=5.2, unit=GHz, dwell_ms=1000\n
 
 RESPONSE:
 #accepted <id=100>\n
 ```
 
-The resulting sequence is:
+The resulting target sequence in GHz is:
 
 ```text
-5 GHz -> 5.1 GHz -> 5.2 GHz
+5, 5.022222, 5.044444, 5.066667, 5.088889,
+5.111111, 5.133333, 5.155556, 5.177778, 5.2
 ```
+
+These are planned tuning targets, not scientific measurements or proof that every target was reached.
 
 At each point, the receiver:
 
@@ -960,7 +1178,7 @@ REQUEST:
 #status <id=101>: name=scan\n
 
 RESPONSE:
-#ok <id=101>: name=scan, state=running, started_at=2026-10-23T10:30:00Z, points_completed=1, points_total=3, progress=33\n
+#ok <id=101>: name=scan, state=running, started_at=2026-10-23T10:30:00Z, points_completed=1, points_total=10, progress=10\n
 ```
 
 A point is completed only after its frequency has been applied and its holding time has elapsed.
@@ -976,10 +1194,10 @@ REQUEST:
 #status <id=102>: name=scan\n
 
 RESPONSE:
-#ok <id=102>: name=scan, state=succeeded, started_at=2026-10-23T10:30:00Z, finished_at=2026-10-23T10:30:03.2Z, points_completed=3, points_total=3\n
+#ok <id=102>: name=scan, state=succeeded, started_at=2026-10-23T10:30:00Z, finished_at=2026-10-23T10:30:11Z, points_completed=10, points_total=10\n
 ```
 
-Success means every point was completed. The receiver remains at `stop`; it does not automatically restore the frequency preceding the scan.
+Success means every point was completed. The receiver remains at the rounded `stop` target; it does not automatically restore the frequency preceding the scan. The duration above is illustrative, not a required normal duration.
 
 The outcome remains available until another scan starts. Reading status does not clear it.
 
@@ -989,15 +1207,15 @@ Changing the operating frequency invalidates the calibration associated with the
 
 ```text
 REQUEST:
-#run <id=103>: name=scan, start=5, stop=5.25, step=0.1, unit=GHz, dwell_ms=1000\n
+#run <id=103>: name=scan, start=5, stop=5.000001, unit=GHz, dwell_ms=1000\n
 
 RESPONSE:
-#error <id=103>: code=INVALID_PARAMETER, parameter=step, reason=ENDPOINT_NOT_REACHABLE\n
+#error <id=103>: code=INVALID_PARAMETER, parameter=stop, reason=INSUFFICIENT_DISTINCT_POINTS\n
 ```
 
 No scan starts and the frequency remains unchanged.
 
-Missing parameters, invalid types, unsupported units, nonpositive steps or holding times, and exceeded limits are rejected before execution. A rejected request does not replace a previous scan's retained outcome.
+Missing parameters, invalid types, unsupported units, original endpoints outside the allowed interval, dwell outside 1 through 1000 ms, and insufficient distinct targets are rejected before execution. A supplied `step` or point-count parameter is rejected as `UNKNOWN_PARAMETER`. A rejected request does not replace a previous scan's retained outcome. `INVALID_PARAMETER` reasons for this profile include `INSUFFICIENT_DISTINCT_POINTS` and `EXECUTION_BUDGET_EXCEEDED`; numeric conversion beyond supported capacity uses `UNREPRESENTABLE_VALUE`. The earlier proposal to require exact, unrounded scan parameters is superseded by this fixed-point target-generation rule.
 
 #### Conflicting Requests
 
@@ -1005,7 +1223,7 @@ Calibration and scanning both require control of tuning and cannot execute toget
 
 ```text
 REQUEST:
-#run <id=104>: name=scan, start=5, stop=6, step=0.1, unit=GHz, dwell_ms=1000\n
+#run <id=104>: name=scan, start=5, stop=6, unit=GHz, dwell_ms=1000\n
 
 RESPONSE:
 #error <id=104>: code=BUSY, description="Calibration currently controls receiver tuning"\n
@@ -1029,14 +1247,14 @@ REQUEST:
 #status <id=105>: name=scan\n
 
 RESPONSE:
-#ok <id=105>: name=scan, state=failed, started_at=2026-10-23T10:30:00Z, finished_at=2026-10-23T10:30:01.4Z, points_completed=1, points_total=3, error_code=FREQUENCY_LOCK_FAILED\n
+#ok <id=105>: name=scan, state=failed, started_at=2026-10-23T10:30:00Z, finished_at=2026-10-23T10:30:02.1Z, points_completed=1, points_total=10, error_code=FREQUENCY_LOCK_FAILED\n
 ```
 
 The receiver stops advancing through the sequence. It does not silently skip the failed point.
 
 No automatic frequency restoration is assumed. The resulting operating frequency must be determined through `get`; if it cannot be determined, the receiver reports its unavailability.
 
-Execution deadlines and controlled-stop requirements follow the common procedure rules.
+Each tuning/verification phase is limited to one second. If the overall execution exceeds 20 seconds, initiate controlled stop; once stopped, record `failed` with `error_code=SCAN_TIMEOUT`. The additional stop deadline is five seconds, and expiration without a verified stop produces an active `STOP_TIMEOUT` fault rather than a false terminal or idle state.
 
 #### Cancelling a Scan
 
@@ -1055,14 +1273,14 @@ REQUEST:
 #status <id=107>: name=scan\n
 
 RESPONSE:
-#ok <id=107>: name=scan, state=cancelled, started_at=2026-10-23T10:30:00Z, finished_at=2026-10-23T10:30:01.5Z, points_completed=1, points_total=3\n
+#ok <id=107>: name=scan, state=cancelled, started_at=2026-10-23T10:30:00Z, finished_at=2026-10-23T10:30:01.5Z, points_completed=1, points_total=10\n
 ```
 
 While interruption is pending, the state is `cancelling`. The receiver reports `cancelled` only after execution has stopped.
 
 Cancellation does not restore the starting frequency. The receiver retains the last successfully applied frequency where it can verify that value; otherwise, its frequency is reported as unavailable.
 
-The [common cancellation rules](#cancelling-a-procedure) apply, including races with normal completion and repeated cancellation requests.
+The scan accepts cancellation throughout active execution, including tuning and holding. The [common cancellation rules](#cancelling-a-procedure) apply, including safe-stop confirmation, races with normal completion, and repeated cancellation requests. Support for cancellation is not a guarantee that malfunctioning hardware will actually stop.
 
 #### Disconnection and Retained State
 
@@ -1164,7 +1382,7 @@ RESPONSE:
 #error <id=85>: code=NOT_CANCELLABLE, name=calibrate\n
 ```
 
-This response applies when the selected procedure, or its current execution phase, cannot be interrupted. Each procedure specification declares its cancellation rules.
+For this receiver, the response applies during calibration's final coefficient-application/finalization phase. No cancellation is registered and no five-second stop deadline begins; calibration and its execution deadline continue. Scan has no corresponding non-cancellable phase. Other hardware profiles declare their own procedure/phase policies.
 
 An unknown procedure is rejected with `UNKNOWN_PROCEDURE`. Missing, unknown, or duplicate parameters follow the common validation rules.
 
@@ -1176,7 +1394,7 @@ If the procedure finishes successfully before interruption takes effect, its fin
 
 #### Stop Failure or Communication Loss
 
-The firmware must bound the interruption attempt. If it cannot stop the hardware, it must expose the resulting fault or uncertainty and prevent incompatible operations. Expiration of a timer alone does not justify reporting `cancelled` or `idle`.
+An accepted cancellation starts one controlled-stop attempt with a five-second deadline. The same limit applies to stops triggered by an execution deadline. Repeated requests while stopping do not restart it. If stop cannot be confirmed by the deadline, expose `health=fault` with `STOP_TIMEOUT`, retain a known active activity or report `unknown`, and prevent incompatible operations. Expiration alone never justifies reporting `cancelled`, completed `failed`, or `idle`. A later verified stop may establish the actual terminal outcome; recording the active fault must not erase diagnostic history.
 
 A disconnection does not withdraw an accepted cancellation request. After reconnecting, the client queries the target procedure's status.
 
@@ -1219,33 +1437,74 @@ No second response or unsolicited completion notification is sent for the reboot
 
 This fictitious receiver permits reboot while calibration or scanning is active. Restart interrupts those activities; it must not rewrite an interrupted procedure's outcome as a successfully completed cancellation.
 
-Without explicitly specified persistence, execution outcomes from before restart become `unknown`. A new execution must not claim a valid calibration merely because calibration had succeeded before restart. Startup checks and the receiver's declared persistence rules determine what can be reported reliably.
+The prototype does not promise persistence of procedure outcomes across reboot: earlier outcomes become `unknown`, rather than being fabricated as cancelled, failed, or succeeded. A new execution must not claim a valid calibration merely because calibration had succeeded before restart. Startup checks determine the current operating state. Persistence of Device configuration is a separate requirement and does not imply firmware outcome persistence or automatic restoration of the last requested frequency.
 
 Reboot is not monitored using `status` with `name=reboot`. Its verification concerns the receiver after startup.
 
 #### Verification After Reconnection
 
-After the original connection closes, the client reconnects and reads general status:
+After the original connection closes, the client follows continuous reconnection, reads the descriptor with ID 1, and queries general status with ID 2:
 
 ```text
 REQUEST:
-#status <id=1>\n
+#status <id=2>\n
 
 RESPONSE:
-#ok <id=1>: health=ok, activity=idle, calibrated=false, booted_at=2026-10-23T10:40:00Z\n
+#ok <id=2>: health=ok, activity=idle, calibrated=false, fault_codes=[], boot_id="33333333333333333333333333333333", booted_at=2026-10-23T10:40:00Z\n
 ```
 
-The identifier belongs to the new connection. `booted_at` describes startup of the current firmware execution, whether caused by this command, power-on, an external reset, or a watchdog.
+The request ID belongs to the new TCP connection. `booted_at` describes the current firmware startup time when known reliably. `boot_id` describes the firmware execution, whether started by this command, power-on, an external reset, or a watchdog, and does not change merely because TCP reconnects.
 
-A changed, trustworthy `booted_at` provides evidence of a new execution. If the timestamp is unavailable or unreliable, successful reconnection alone establishes reachability, not proof that the reboot occurred. The client must not invent a completion result.
+Compare `boot_id` with the value observed before the reboot request. A changed token establishes a new execution even without trustworthy UTC; an unchanged token establishes only restored communication, not a completed reboot. Without a prior token, do not invent proof of a transition. A changed token does not establish causation by this particular request. Clock distrust remains an explicit fault even though boot comparison still works.
 
 #### Missing Response or Failed Reconnection
 
 If `accepted` is not received, the reboot outcome is uncertain. The client attempts to reconnect and inspect status rather than automatically resending the command and risking another restart.
 
-If the receiver does not become reachable within the client's startup deadline, the library reports that restart could not be verified. It must not assume whether the cause is firmware startup failure, power loss, or a network problem.
+There is no fixed ten-second wait and no additional global startup-verification deadline in this prototype. Each TCP attempt is bounded by two seconds, failed attempts pause for five seconds, and attempts continue while requested. The Device reports unavailability and diagnostics during the outage and checks configuration/status as soon as a connection succeeds. A caller receives the initial `accepted`/`error` or communication failure within the ordinary response policy; it is not a blocking call that waits forever for startup. Once a usable connection exists, do not repeatedly tear it down solely because restart evidence is missing. Keep reachability, health, and verified new-execution evidence distinct; never automatically resend `reboot`.
 
 A firmware that no longer processes requests cannot be recovered reliably by sending `reboot`. Watchdog and external-reset behavior belong to the protection and recovery design, not to a guarantee of this command.
+
+## Initial Fault-injection and Conformance Matrix
+
+The simulator replaces hardware and firmware, not the Synqaro Device. A small test client and conformance suite can exercise it before the framework is implemented. Fault control belongs to test tooling or simulator startup/configuration, **not** to extra production-protocol commands. The exact activation interface and scenario-file format are intentionally deferred.
+
+For each case, tests must distinguish injected physical state, firmware-reported state, wire evidence, and the library's outcome. A well-formed reply is not proof that the hardware action succeeded, and a lost reply is not proof that it failed.
+
+| Injected condition | Firmware / wire expectation | Client / state expectation |
+|---|---|---|
+| Partial frames or multiple frames per TCP read | Parse only complete LF-terminated frames | Preserve framing and match separate IDs |
+| No LF within two seconds after first byte | Discard frame and close the receiving side's connection | Framing error/disconnection; no execution inferred from an incomplete request |
+| More than 4096 bytes including required LF | Discard and close; no oversized request execution | Bounded receive memory; preserve diagnostics |
+| Bad request fields, trustworthy ID | `MALFORMED_REQUEST`, no hardware effects, keep TCP | Complete only that rejection; preserve readable error context |
+| Missing/invalid/ambiguous request ID | Uncorrelated `INVALID_ID`, no execution, keep TCP | Diagnostic only; no pending request completed |
+| Repeated or decreasing request ID | `ID_NOT_INCREASING` plus rejected-target details; original unaffected | Reserved diagnostic path, not failure of original request |
+| Fifth pending request from a faulty client | `TOO_MANY_PENDING_REQUESTS, limit=4`; no execution | Existing four continue; no implicit unbounded queue |
+| Responses deliberately reordered | Echo each request's correct ID | Match individually; keep increasing send IDs and independent deadlines |
+| Malformed complete reply with recoverable pending ID | Corrupt response is preserved as evidence | Local protocol error for that request, no state update, no automatic resend |
+| Ordinary reply with never-sent or already-completed ID | Response anomaly | Log/discard without completing another request; keep TCP |
+| Late reply after request timeout | Original operation may already have happened | Diagnostic only, not retroactive success or automatic state update |
+| Apply frequency but lose its response | Hardware may hold the new value | Timeout, one status probe, fresh read before dependent work; never replay the setting automatically |
+| Lose initial calibration/scan acceptance | Procedure remains current and queryable | Probe/reconnect as needed; query named status, do not start another attempt automatically |
+| Lost reply but valid status probe | Firmware still serves status | Retain connection; separate reachability from health and command outcome |
+| Silent probe or broken link | No usable reply | Reconnect with bounded attempts and pauses; Device stays reachable; no automatic reboot |
+| Tuning fails or exceeds one second | `FREQUENCY_LOCK_FAILED`; no false verified frequency, scan does not advance | Observe resulting frequency/fault/uncertainty instead of assuming old or requested value |
+| Frequency read cannot obtain a valid value | `FREQUENCY_READ_FAILED`, not a guessed value | Do not substitute an invalid cache or confuse it with expected `VALUE_UNAVAILABLE` |
+| Calibration reference unavailable after acceptance | Procedure `failed` once stopped, `CALIBRATION_REFERENCE_UNAVAILABLE` | `calibrated=false`; health depends on actual affected capabilities |
+| Client cancellation during calibration finalization | `NOT_CANCELLABLE`; no stop attempt registered | Execution continues; no cancellation timer is started |
+| Accepted cancellation races with successful completion | Report actual terminal result, possibly `succeeded` | Do not manufacture `cancelled`; repeated cancel cannot extend a stop deadline |
+| Calibration exceeds 30 s or scan exceeds 20 s | Initiate controlled stop; after verified stop report matching timeout failure | Separate execution deadline from the additional five-second stop budget |
+| Controlled stop still unconfirmed after five seconds | `STOP_TIMEOUT` active; known continuing activity or `unknown`; incompatible work blocked | Do not report idle or confirmed terminal execution merely because a timer expired |
+| Clock unavailable/untrusted on UTC-capable receiver | `CLOCK_UNTRUSTED`, omit unreliable new UTC timestamps | Visible log/alarm; valid UTC-independent readings and monotonic timers may continue |
+| Simultaneous synthesizer and clock faults | Both appear in `fault_codes` | Preserve all active conditions; remove only after verified resolution |
+| Successful reboot or spontaneous restart | New `boot_id`, old TCP closed; old outcomes not invented | Compare boot identity, reread descriptor/status, invalidate Device cache, never replay `reboot` |
+| TCP reconnect without firmware restart | Same `boot_id` | Reachability restored, not evidence of reboot; keep usable TCP |
+| Missing/incompatible/malformed descriptor | No invented capabilities; explicit unsupported legacy case may use matched profile | Otherwise affected writes stay disabled; no silent file fallback |
+| Out-of-range or unrepresentable numeric input | Explicit validation error before hardware effects; no infinity/underflow coercion | Preserve type/range distinction and exact rounding-boundary behavior |
+| Fixed scan endpoints collapse or budget exceeds limits | Validation rejection; previous scan outcome retained | No single-point substitution, silent skipped target, or started scan |
+| Device cache expires, known modification begins, or link is lost | Subsequent wire `get` reads current simulated state | Invalidate/reacquire; cached sample time is never relabeled |
+
+This is an acceptance matrix for implementation, not evidence that tests have already run. Include normal paths, ascending/descending scans, exact rounding ties, all frame-size/deadline boundaries, and fragmented/reordered responses in the future executable suite. Deadline tests should use controllable timing where possible rather than relying exclusively on slow wall-clock sleeps. Expected code names and fields must be checked against this contract.
 
 ## Open Issues and Deferred Scope
 
@@ -1288,18 +1547,24 @@ Any protection architecture must explicitly define its behavior when the control
 
 ### Reboot Implementation and Fault Recovery
 
-Reboot syntax and general behavior are specified in [Rebooting the Receiver](#rebooting-the-receiver). Platform-specific TCP transmission-completion conditions, shutdown and startup deadlines, startup checks, persistence, and verification when `booted_at` is unavailable remain to be defined for the implementation.
+Reboot syntax, continuous reconnect policy, lack of a global ten-second verification deadline, and verification independent of UTC using `boot_id` are specified above. Platform-specific TCP transmission-completion conditions and their bounded wait, actual restart/startup checks, production boot-token generation, and watchdog/external-reset integration remain implementation work. A future requirement for a boot-duration alarm must be stated explicitly rather than silently reintroducing the rejected verification timer.
 
 A separate `recover` procedure remains conditional on defining a persistent fault that requires explicit recovery. It must verify recovery rather than merely clear diagnostic information. No recovery procedure is specified yet.
 
+### Device Configuration, Persistence, and Historical Reconstruction
+
+The approved requirements are persistent Device configuration, live modification of monitoring thresholds, configurable per-property cache reuse (500 ms default, zero to disable), and the ability to reconstruct which software, firmware, and effective configuration were in use at an incident time. These are not solved merely by returning hardware capabilities or keeping Git commits.
+
+Record immutable effective-configuration revisions and their content, software deployment/build identity, firmware/hardware identity and descriptor/profile, Device boot/session, and requested/applied/saved change outcomes with activation evidence and timestamp provenance. Historical lookup must distinguish configuration present in a file from configuration actually active. Relate telemetry and diagnostic events to the effective revision; retain incidents even after faults clear. Version/hash references require retained content/artifacts to make reconstruction useful. Persisting settings does not require restoring stale measurement caches or automatically replaying hardware operations.
+
+Still open are the concrete file/schema and update interface, atomic validation/application of related settings, hot-reload rules beyond the agreed threshold requirement, authorization/concurrent updates, persistence location, storage/activation failure semantics, audit retention, deployment manifests, and reliable retrieval of software/firmware artifacts. Also unresolved is the durability level: which crash/network/storage failures must preserve complete history, what local durable buffering is needed, and when explicitly incomplete reconstruction is acceptable. Do not infer lossless configuration audit from the existing asynchronous telemetry recorder or invent a new central runtime configuration service before these requirements justify one. The Device must not acquire shared PostgreSQL credentials to fill this gap.
+
+### Simulator Fault Activation and Platform Timing
+
+Fault injection is outside the operational wire protocol, and its initial acceptance matrix is defined above. Startup flags, scenario/configuration files, test-controlled runtime activation, trigger points, and exact simulator phase scheduling are still to be selected. Real hardware clock synchronization, trust/quality assessment, measurement uncertainty, and required acquisition timing accuracy must be specified for the chosen platform; the simulator host-clock assumption is not a production guarantee. Maximum supported connections and platform resource measurements also belong to implementation validation, not an implicit unlimited-capacity promise.
+
 ### Remaining Prototype Contract Details
 
-Before firmware and library implementation, the prototype still needs concrete definitions for:
+The earlier open numeric, framing, request-ID, concurrency, timing, error-catalog, cache-ownership, cancellation, health/activity, discovery, and boot-identification choices are resolved in this revision. Do not treat superseded proposals (variable-step scans, a 1000-point maximum, firmware cache tuning, singular `fault_code`, non-monotonic IDs, unconditional disconnect on every response timeout, or a ten-second global reboot timer) as alternative current contracts.
 
-- exact numeric syntax, representable frequency resolution, and the handling of values that cannot be represented as requested;
-- message-size limits, incomplete-message and response timeouts, procedure and cancellation deadlines, scan point limits, and default polling behavior;
-- supported numbers of pending requests per connection, response ordering, and handling of duplicate request IDs, delayed responses, and unexpected identifiers;
-- the common error-code registry and the behavior for malformed messages beyond the framing violations already specified;
-- how cached values remain valid, how hardware health and activity are established, and which phases of each procedure can reject cancellation;
-- clock synchronization, clock-quality assessment, and availability rules on the selected hardware;
-- a fault-injection matrix linking simulated failures to the expected firmware response, reported state, and communication-library outcome.
+The next development step is a standalone TCP hardware/firmware simulator plus a small client and executable conformance/fault tests. It does not depend on implementing the Synqaro framework, production Device configuration/history infrastructure, bulk data, or scientific acquisition. After validating that path, implement the communication library/adapter and use the evidence to refine the Device design. Detailed choices explicitly deferred above remain open; implementation must document them and must not silently change the approved behavior.
