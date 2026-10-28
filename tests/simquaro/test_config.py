@@ -1,6 +1,7 @@
 import asyncio
 from dataclasses import FrozenInstanceError, replace
 from datetime import datetime, timedelta, timezone
+from decimal import Inexact, InvalidOperation, Rounded, localcontext
 import math
 import unittest
 
@@ -11,6 +12,24 @@ from tests.simquaro.support.clock import VirtualClock
 
 
 class ConfigurationTests(unittest.TestCase):
+    def test_frequency_validation_is_independent_of_caller_decimal_context(self):
+        for trap_invalid in (False, True):
+            with self.subTest(trap_invalid=trap_invalid), localcontext() as context:
+                context.prec = 3
+                context.Emax = 0
+                context.Emin = 0
+                context.traps[InvalidOperation] = trap_invalid
+                context.traps[Inexact] = True
+                context.traps[Rounded] = True
+                with self.subTest(initial_frequency="default"):
+                    self.assertEqual(ReceiverConfig().initial_frequency, 5)
+                with self.subTest(initial_frequency=5.123456):
+                    self.assertEqual(ReceiverConfig(initial_frequency=5.123456).initial_frequency,
+                                     5.123456)
+                with self.subTest(initial_frequency=5.0000005):
+                    with self.assertRaisesRegex(ValueError, "off grid"):
+                        ReceiverConfig(initial_frequency=5.0000005)
+
     def test_default_receiver(self):
         inventory = load_inventory()
         self.assertEqual(set(inventory), {"receiver-a"})

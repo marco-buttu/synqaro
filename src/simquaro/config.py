@@ -2,7 +2,7 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from decimal import Decimal
+from decimal import Context, Decimal, localcontext
 import re
 
 
@@ -94,7 +94,11 @@ class ReceiverConfig:
         initial = Decimal(str(self.initial_frequency))
         if not initial.is_finite() or not Decimal("1") <= initial <= Decimal("10"):
             raise ValueError("initial_frequency is out of range; choose 1 through 10 GHz")
-        if initial % Decimal("0.000001") != 0:
+        # In-range int/float decimal spellings fit exactly within 32 digits.
+        # The caller's precision, exponent limits, and traps cannot change validation.
+        with localcontext(Context(prec=32)):
+            off_grid = initial % Decimal("0.000001") != 0
+        if off_grid:
             raise ValueError("initial_frequency is off grid; choose an exact 0.000001 GHz step")
 
         for name in ("tuning_duration_ms", "stop_duration_ms", "calibrate_preparation_ms",
