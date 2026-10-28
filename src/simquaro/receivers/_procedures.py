@@ -122,6 +122,9 @@ class Procedures:
             attempt.phase = "holding"
             await self.model.clock.sleep(dwell_ms / 1000)
             await self._advance_ready()
+            self.model._diagnose()
+            if not self.model._frequency_verified or self.model._frequency != target:
+                raise ProtocolError("FREQUENCY_LOCK_FAILED", {})
             attempt.points_completed += 1
 
     async def _watchdog(self, attempt, deadline):

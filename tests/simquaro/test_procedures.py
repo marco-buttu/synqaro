@@ -129,6 +129,48 @@ class ProcedureTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await self.named("scan"))["state"], "unknown")
         self.assertEqual(self.model.snapshot()["actual"]["frequency"], "5")
 
+    async def assert_scan_rejects_lost_hold(self, completed, *, poll_during_fault):
+        clock = VirtualClock()
+        faults = FaultController()
+        model = FictitiousReceiverSimulator(ReceiverConfig(), faults=faults, clock=clock)
+        self.addAsyncCleanup(model.close)
+        await model.handle(Request("run", 1, {}, {"name": "scan", "start": N("5"),
+                           "stop": N("6"), "unit": "GHz", "dwell_ms": N("1000")}), session_id="a")
+
+        async def tick(seconds):
+            await turns()
+            clock.advance(seconds)
+            await turns()
+
+        for _ in range(completed):
+            await tick(.1)
+            await tick(1)
+        await tick(.1)
+        faults.activate("synthesizer_failure")
+        if poll_during_fault:
+            await model.handle(Request("status", 2, {}, {}), session_id="a")
+        await tick(1)
+        # Inspect retained procedure status first: no request/snapshot diagnostic
+        # call may be needed to make the procedure detect its own hardware loss.
+        result = model._procedures.status("scan")
+        self.assertEqual(result["state"], "failed")
+        self.assertEqual(result["error_code"], "FREQUENCY_LOCK_FAILED")
+        self.assertEqual(str(result["points_completed"]), str(completed))
+        snapshot = model.snapshot()
+        self.assertFalse(snapshot["actual"]["frequency_verified"])
+        self.assertFalse(snapshot["actual"]["procedure_active"])
+        self.assertEqual(snapshot["reported"]["general"]["health"], "fault")
+
+    async def test_final_scan_hold_requires_surviving_verified_frequency(self):
+        for poll in (False, True):
+            with self.subTest(poll_during_fault=poll):
+                await self.assert_scan_rejects_lost_hold(9, poll_during_fault=poll)
+
+    async def test_earlier_scan_hold_failure_is_not_credited_or_skipped(self):
+        for poll in (False, True):
+            with self.subTest(poll_during_fault=poll):
+                await self.assert_scan_rejects_lost_hold(1, poll_during_fault=poll)
+
     async def test_repeated_cancel_preserves_deadline_and_late_verified_stop_recovers(self):
         self.faults.activate("procedure_stall")
         self.faults.activate("stop_unconfirmed")
