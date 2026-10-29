@@ -48,6 +48,11 @@ class HardwareServer:
     def sessions(self):
         return tuple(self._sessions)
 
+    @property
+    def listening(self):
+        """Actual listener state; this does not verify hardware communication."""
+        return self._listener is not None and self._listener.is_serving()
+
     async def start(self):
         if self._listener is None:
             self._closed = False
