@@ -2,7 +2,9 @@
 
 All operations return per-instance evidence. Runtime query success is separate
 from simulated health, and no status/readiness operation queries hardware TCP.
-Only supervise() installs process signal handlers, and only for its duration.
+The caller owns OS signal policy throughout startup and supervision. Cancelling
+supervise() cleans only its supplied owned children before propagating; this
+module never installs or removes the caller's signal handlers.
 """
 
 import asyncio
@@ -377,27 +379,24 @@ class Runtime:
         return await self.start(config, scenario=scenario)
 
     async def supervise(self, started: Sequence[StartResult]) -> int:
+        """Wait for owned children; cancellation cleans them before propagating.
+
+        The foreground caller must convert SIGINT/SIGTERM into cancellation and
+        own those handlers throughout startup and supervision. No signal-handler
+        installation, handoff, removal or restoration happens in this library.
+        """
         children = [result.child for result in started if result.child is not None]
         failure = any(not result.outcome["ok"] for result in started)
         if not children:
             return int(failure)
-        loop = asyncio.get_running_loop()
-        interrupted = asyncio.Event()
-        previous = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
-        for sig in previous:
-            loop.add_signal_handler(sig, interrupted.set)
         waits = {asyncio.create_task(child.wait()): child for child in children}
-        stop_wait = asyncio.create_task(interrupted.wait())
         async def cleanup_owned():
             results = await asyncio.gather(*(self._stop(child.name, expected=child.run_token)
                                              for child in children))
             return any(not result["ok"] for result in results)
         try:
             while waits:
-                done, _ = await asyncio.wait([*waits, stop_wait], return_when=asyncio.FIRST_COMPLETED)
-                if stop_wait in done:
-                    failure |= await cleanup_owned()
-                    return int(failure)
+                done, _ = await asyncio.wait(waits, return_when=asyncio.FIRST_COMPLETED)
                 for task in done:
                     child = waits.pop(task)
                     failure |= task.result() != 0
@@ -412,10 +411,6 @@ class Runtime:
                 await cleanup
             raise
         finally:
-            stop_wait.cancel()
             for task in waits:
                 task.cancel()
-            await asyncio.gather(stop_wait, *waits, return_exceptions=True)
-            for sig, handler in previous.items():
-                loop.remove_signal_handler(sig)
-                signal.signal(sig, handler)
+            await asyncio.gather(*waits, return_exceptions=True)

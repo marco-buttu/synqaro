@@ -428,8 +428,28 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
             supervisor = await self.helper("supervisor")
             supervisor.send_signal(sig)  # This suite's explicit subprocess handle.
             self.assertEqual(await asyncio.wait_for(supervisor.wait(), 5), 0)
+            self.assertEqual((self.root / "receiver-a.caller-signal").read_text(), sig.name)
             self.assertIsNone(existing.child.returncode)
             self.assertEqual((await self.runtime.inspect(self.config))["process"], "stopped")
+
+    async def assert_signal_handlers_preserved(self, mode):
+        supervisor = await self.helper(mode)
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            supervisor.send_signal(sig)
+            try:
+                response = await asyncio.wait_for(supervisor.stdout.readline(), 1)
+            except TimeoutError:
+                response = b""
+            self.assertEqual(response, (sig.name + "\n").encode(),
+                             "supervision lost a pre-existing asyncio signal callback")
+        self.assertEqual(await asyncio.wait_for(supervisor.wait(), 2), 0)
+        self.assertEqual((await self.runtime.inspect(self.config))["process"], "stopped")
+
+    async def test_preexisting_asyncio_handlers_survive_successful_supervision(self):
+        await self.assert_signal_handlers_preserved("preserve-normal")
+
+    async def test_preexisting_asyncio_handlers_survive_cancelled_supervision(self):
+        await self.assert_signal_handlers_preserved("preserve-cancel")
 
     async def test_interruption_while_subprocess_creation_is_in_flight(self):
         real_spawn = subprocess.Popen
