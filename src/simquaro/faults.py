@@ -108,9 +108,14 @@ class FaultEffect:
     # Provenance is separate from user parameters; the transport uses it to
     # key reorder holds by (rule_id, session_id), including a rule's last use.
     rule_id: str | None = None
+    when: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "parameters", _parameters(self.name, self.parameters))
+        if self.when is not None:
+            _event(self.when)
+            if self.rule_id is None:
+                raise ValueError("trigger provenance requires a scheduled rule ID; use schedule()")
         if self.rule_id is not None and (not isinstance(self.rule_id, str)
                                         or not self.rule_id.startswith("rule-")
                                         or not self.rule_id[5:].isascii()
@@ -161,7 +166,7 @@ class Scenario:
         names = set()
         for effect in initial:
             if (not isinstance(effect, FaultEffect) or not _definition(effect.name).persistent
-                    or effect.rule_id is not None):
+                    or effect.rule_id is not None or effect.when is not None):
                 raise ValueError("invalid initial fault; supply a persistent FaultEffect without rule provenance")
             if effect.name in names:
                 raise ValueError("duplicate initial fault; specify each persistent condition once")
@@ -271,7 +276,7 @@ class FaultController:
                 rule = scheduled.rule
                 if rule.when != context.event:
                     continue
-                effect = FaultEffect(rule.name, rule.parameters, scheduled.rule_id)
+                effect = FaultEffect(rule.name, rule.parameters, scheduled.rule_id, rule.when)
                 if _definition(rule.name).persistent:
                     self._active[rule.name] = effect
                 else:
