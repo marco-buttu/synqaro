@@ -142,3 +142,44 @@ class WireFaultTests(RawSessionCase):
                 self.assertEqual(await self.line(r), b"")
                 await turns(100)
         self.assertNotEqual(old, self.model.boot_id)
+
+    async def test_reboot_socket_closed_after_drain_still_restarts(self):
+        old = self.model.boot_id
+        r, w = await self.connect()
+        await turns()
+        session = self.server.sessions[0]
+        original_drain = session.writer.drain
+        drains = 0
+
+        async def drain_then_close():
+            nonlocal drains
+            await original_drain()
+            drains += 1
+            if drains == 2:
+                session.writer.close()
+                await session.writer.wait_closed()
+
+        with patch.object(session.writer, "drain", new=drain_then_close):
+            with self.assertLogs("simquaro.server", "WARNING") as logs:
+                w.write(b"#reboot <id=1>\n")
+                self.assertEqual(await self.line(r), b"#accepted <id=1>\n")
+                self.assertEqual(await self.line(r), b"")
+                await turns(100)
+        self.assertEqual(drains, 2)
+        self.assertNotEqual(old, self.model.boot_id)
+        self.assertIn("acceptance delivery uncertain", " ".join(logs.output))
+        self.assertEqual(await self.server.start(), self.address)
+
+    async def test_reboot_missing_socket_observation_still_restarts(self):
+        old = self.model.boot_id
+        r, w = await self.connect()
+        await turns()
+        session = self.server.sessions[0]
+        with patch.object(session.writer, "get_extra_info", return_value=None):
+            with self.assertLogs("simquaro.server", "WARNING") as logs:
+                w.write(b"#reboot <id=1>\n")
+                self.assertEqual(await self.line(r), b"#accepted <id=1>\n")
+                await turns(100)
+        self.assertNotEqual(old, self.model.boot_id)
+        self.assertIn("acceptance delivery uncertain", " ".join(logs.output))
+        self.assertEqual(await self.line(r), b"")

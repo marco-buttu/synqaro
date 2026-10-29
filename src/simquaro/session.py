@@ -63,17 +63,19 @@ class HardwareSession:
         self._runner = asyncio.current_task()
         buffer = b""
         first_byte = None
+        received_at = None
         try:
             while not self._closed:
                 if b"\n" in buffer:
                     frame, buffer = buffer.split(b"\n", 1)
+                    # Before each read the retained buffer contains no LF.
+                    # All bytes after this LF therefore came in the latest read.
+                    first_byte = received_at if buffer else None
                     admission = self._admit(frame + b"\n")
                     if buffer and not buffer.endswith(b"\n"):
                         await bounded(admission, self.clock, first_byte + 2)
                     else:
                         await admission
-                    if not buffer:
-                        first_byte = None
                     continue
                 if len(buffer) >= MAX_MESSAGE_BYTES:
                     break
@@ -82,8 +84,9 @@ class HardwareSession:
                          await bounded(read, self.clock, first_byte + 2))
                 if not chunk:
                     break
+                received_at = self.clock.monotonic()
                 if first_byte is None:
-                    first_byte = self.clock.monotonic()
+                    first_byte = received_at
                 buffer += chunk
         except (ConnectionError, OSError, TimeoutError):
             pass

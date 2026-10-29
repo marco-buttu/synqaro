@@ -18,8 +18,15 @@ def _outgoing_bytes(writer):
 
     Zero does not establish that the peer application read the response.
     """
+    sock = writer.get_extra_info("socket")
+    if sock is None:
+        raise ConnectionError("TCP socket unavailable during transmission observation")
     result = array.array("i", [0])
-    fcntl.ioctl(writer.get_extra_info("socket").fileno(), termios.TIOCOUTQ, result, True)
+    try:
+        fcntl.ioctl(sock.fileno(), termios.TIOCOUTQ, result, True)
+    except ValueError as error:
+        # A transport closed after drain may retain a socket wrapper with fd -1.
+        raise ConnectionError("TCP socket closed during transmission observation") from error
     return result[0]
 
 

@@ -115,6 +115,17 @@ class ServerTests(RawSessionCase):
         await self.tick(.501)
         self.assertEqual(await self.line(r), b"")
 
+    async def test_next_frame_in_predecessor_finishing_read_has_own_deadline(self):
+        r, w = await self.connect()
+        w.write(b"#status <id=1>")
+        await self.tick(1.5)
+        w.write(b"\n#status <id=2>")
+        self.assertIn(b"#ok <id=1>", await self.line(r))
+        # Frame 2 began at 1.5, so it may finish until 3.5, not only until 2.
+        await self.tick(1.999)
+        w.write(b"\n")
+        self.assertIn(b"#ok <id=2>", await self.line(r))
+
     async def test_four_delayed_pending_fifth_rejected_and_consumed(self):
         self.faults.schedule("delay_response", when="response_ready", times=4, parameters={"delay_ms": 2500})
         r, w = await self.connect()
