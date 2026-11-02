@@ -259,6 +259,34 @@ class CliTests(unittest.IsolatedAsyncioTestCase):
         records = [json.loads(line) for line in stdout.splitlines()]
         self.assertEqual(next(item for item in records if item["event"] == "exited")["result"]["returncode"], -9)
 
+    async def test_observed_worker_crash_remains_failure_after_interrupting_other_worker(self):
+        inventory = {name: self.inventory[name] for name in ("receiver-a", "receiver-b")}
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            with self.subTest(signal=sig):
+                process = await self.launch("--json", "start", "all", inventory=inventory)
+                await self.event(process, "start", "receiver-a")
+                await self.event(process, "start", "receiver-b")
+                with Directory(self.root) as directory:
+                    record, _ = directory.read("receiver-a")
+                target = ProcessIdentity(record)
+                try:
+                    target.send(signal.SIGKILL)
+                    exited = await self.event(process, "exited", "receiver-a")
+                    self.assertEqual(exited["result"]["returncode"], -9)
+                    self.assertIsNone(process.returncode)
+                    self.assertEqual((await self.runtime.inspect(inventory["receiver-b"]))["outcome"], "running")
+                    process.send_signal(sig)
+                    stdout, stderr = await asyncio.wait_for(process.communicate(), 8)
+                    self.assertEqual(process.returncode, 1, stderr.decode())
+                    records = [json.loads(line) for line in stdout.splitlines()]
+                    self.assertEqual(next(item for item in records if item["event"] == "finished")["result"]["exit_code"], 1)
+                    self.assertFalse((self.root / "receiver-a.json").exists())
+                    self.assertFalse((self.root / "receiver-b.json").exists())
+                finally:
+                    target.send(signal.SIGKILL)
+                    await target.wait(3)
+                    target.close()
+
     async def test_interrupted_cleanup_failure_is_reported_and_owned_child_is_reaped(self):
         process = await self.launch("--json", "start", "receiver-a")
         await self.event(process, "start", "receiver-a")

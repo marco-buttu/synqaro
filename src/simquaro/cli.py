@@ -161,7 +161,12 @@ async def _foreground(runtime, configs, action, output):
     loop = asyncio.get_running_loop()
 
     async def observe(child):
+        nonlocal failure
         returncode = await child.wait()
+        # Retain crashes already observed before a shutdown request. A later
+        # SIGKILL can be the expected escalation of that requested shutdown.
+        if not interrupted:
+            failure |= returncode != 0
         output.emit("exited", instance=child.name, result={"returncode": returncode})
 
     async def operate():
