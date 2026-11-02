@@ -12,3 +12,7 @@ AI-native control and engineering platform for complex distributed systems.
 
 - [Hardware Protocol](docs/hardware_protocol.md)
 - [Device Architecture](docs/device.md)
+
+### Development and testing
+
+- [Simquaro operator guide](docs/simquaro.md)
