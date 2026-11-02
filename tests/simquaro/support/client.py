@@ -182,7 +182,17 @@ class ConformanceClient:
 
     @property
     def writes_enabled(self):
-        return self._ready and not self._closed and not self._affected and not self._recovering
+        return self._ready and self._session_live() and not self._affected and not self._recovering
+
+    def _session_live(self, session=None):
+        return (not self._closed and not self._broken
+                and (session is None or session == self._session)
+                and self._writer is not None and not self._writer.is_closing()
+                and self._reader_task is not None and not self._reader_task.done())
+
+    def _require_live(self, session):
+        if not self._session_live(session):
+            raise LocalFailure("DISCONNECTED")
 
     @property
     def _recovering(self):
@@ -257,6 +267,7 @@ class ConformanceClient:
             raise LocalFailure("DISCONNECTED") from None
         self._next_id = 1
         self._session += 1
+        session = self._session
         self._retired.clear()
         self._broken = False
         self._reader_task = asyncio.create_task(self._read(reader))
@@ -266,9 +277,11 @@ class ConformanceClient:
         except LocalFailure:
             self._record("incompatible_descriptor", response.request_id, wire=b"", message="Unsupported descriptor; writes disabled")
             raise
+        general = await self._exchange("status", {}, recover=False)
+        _general(general)
+        self._require_live(session)
         self.descriptor = response
-        self.general = await self._exchange("status", {}, recover=False)
-        _general(self.general)
+        self.general = general
         self._ready = True
 
     async def request(self, verb: str, fields: Mapping[str, Value] | None = None) -> Response:
@@ -291,9 +304,10 @@ class ConformanceClient:
                 await asyncio.shield(self._recovery)
             if modifying and not self.writes_enabled:
                 raise LocalFailure("WRITES_DISABLED")
+        session = self._session
         response = await self._exchange(verb, fields)
         target = (verb, fields.get("name"))
-        if target in self._affected:
+        if target in self._affected and self._session_live(session):
             try:
                 _refresh_usable(target, response)
             except LocalFailure:
@@ -457,8 +471,10 @@ class ConformanceClient:
         try:
             if not self._broken and self._next_id <= 4294967295:
                 try:
+                    session = self._session
                     response = await self._exchange("status", {}, recover=False)
                     _general(response)
+                    self._require_live(session)
                     self.general = response
                 except LocalFailure:
                     self._broken = True
@@ -480,12 +496,20 @@ class ConformanceClient:
                         continue
                 try:
                     for target in tuple(self._affected):
+                        session = self._session
                         response = await self._exchange(target[0], {"name": target[1]}, recover=False)
+                        self._require_live(session)
                         _refresh_usable(target, response)
                         self.refreshed[target] = response
                         self._affected.discard(target)
+                    self._require_live(self._session)
+                    if self._affected:
+                        continue
                     return
                 except LocalFailure as exc:
+                    if not self._session_live():
+                        self._broken = True
+                        continue
                     if exc.code in ("UNUSABLE_REFRESH", "MALFORMED_RESPONSE"):
                         self._record("unusable_refresh", exc.request_id, message=str(exc))
                         return

@@ -12,13 +12,98 @@ from simquaro.control import control_request
 from simquaro.faults import FaultEffect, FaultRule, Scenario
 from simquaro.protocol import NumericToken
 from simquaro.runtime import Runtime
-from tests.simquaro.test_conformance import ScriptedClientCase, GENERAL, ok, wire_id
+from tests.simquaro.test_conformance import DESCRIPTOR, ScriptedClientCase, GENERAL, ok, wire_id
 from tests.simquaro.test_server import RawSessionCase, turns
 
 try:
     from tests.simquaro.support.client import ConformanceClient, LocalFailure
 except ImportError:
     ConformanceClient = LocalFailure = None
+
+
+class RecoveryEofTests(unittest.IsolatedAsyncioTestCase):
+    async def _recover_after_eof(self, eof_after):
+        """Real stream parsing; only connection opening is replaced, no sockets."""
+        from tests.simquaro.support.clock import VirtualClock
+        clock = VirtualClock()
+        client = ConformanceClient("memory-peer", 1, clock=clock)
+        self.addAsyncCleanup(client.close)
+        next_connection = asyncio.Event()
+        writers = []
+
+        class PeerWriter:
+            def __init__(self, reader, fail_after):
+                self.reader, self.fail_after = reader, fail_after
+                self.closing = False
+                self.transport = self
+
+            def write(self, frame):
+                request_id = wire_id(frame)
+                if b'name="configuration"' in frame:
+                    fields = DESCRIPTOR
+                elif frame.startswith(b"#get"):
+                    fields = b'name=frequency, value=6, unit=GHz'
+                else:
+                    fields = GENERAL
+                self.reader.feed_data(ok(request_id, fields))
+                if request_id == self.fail_after:
+                    self.reader.feed_eof()
+
+            async def drain(self):
+                await asyncio.sleep(0)
+
+            def is_closing(self):
+                return self.closing
+
+            def close(self):
+                self.closing = True
+                self.reader.feed_eof()
+
+            abort = close
+
+            async def wait_closed(self):
+                await asyncio.sleep(0)
+
+        attempts = 0
+        async def open_connection(*args, **kwargs):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 2:
+                await next_connection.wait()
+            reader = asyncio.StreamReader()
+            writer = PeerWriter(reader, eof_after if attempts == 1 else None)
+            writers.append(writer)
+            return reader, writer
+
+        with patch("asyncio.open_connection", new=open_connection):
+            if eof_after == 3:
+                client._affected.add(("get", "frequency"))
+            client._start_recovery(direct=True)
+            await turns(100)
+            self.assertFalse(client.writes_enabled, "EOF cannot leave bootstrap readiness enabled")
+            self.assertNotIn(("get", "frequency"), client.refreshed,
+                             "EOF cannot commit the last refresh from the retired session")
+            # Failed bootstrap may pause five seconds; failed refresh retries immediately.
+            for _ in range(10):
+                if attempts >= 2:
+                    break
+                clock.advance(.5)
+                await turns(100)
+            self.assertEqual(attempts, 2, "a coalesced EOF must keep recovery reconnecting")
+            self.assertFalse(client.writes_enabled, "new TCP still needs live descriptor/status validation")
+            next_connection.set()
+            await turns(120)
+            self.assertTrue(client.writes_enabled)
+            self.assertFalse(writers[-1].is_closing())
+            self.assertFalse(client._recovering)
+            if eof_after == 3:
+                self.assertEqual(str(client.refreshed[("get", "frequency")].fields["value"]), "6")
+
+    async def test_eof_after_reconnect_bootstrap_status_continues_recovery(self):
+        await self._recover_after_eof(2)
+
+    async def test_eof_after_last_refresh_continues_recovery_without_committing_stale_state(self):
+        await self._recover_after_eof(3)
 
 
 class RecoveryTests(ScriptedClientCase):
