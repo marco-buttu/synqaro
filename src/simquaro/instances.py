@@ -4,7 +4,7 @@ from simquaro.config import InstanceConfig, validate_inventory
 from simquaro.models.fictitious_receiver.config import ReceiverConfig
 
 
-def load_inventory() -> dict[str, InstanceConfig]:
+def builtin_inventory() -> dict[str, InstanceConfig]:
     return validate_inventory({
         "receiver-a": InstanceConfig(
             name="receiver-a",
@@ -14,3 +14,7 @@ def load_inventory() -> dict[str, InstanceConfig]:
             settings=ReceiverConfig(),
         ),
     })
+
+
+def load_inventory() -> dict[str, InstanceConfig]:
+    return builtin_inventory()
