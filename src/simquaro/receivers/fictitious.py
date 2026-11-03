@@ -13,7 +13,7 @@ import secrets
 
 from simquaro.clock import Clock, SystemClock
 from simquaro.config import ReceiverConfig
-from simquaro.errors import ProtocolError
+from simquaro.errors import ProtocolError, render_error
 from simquaro.faults import FaultContext, FaultController, FaultEffect
 from simquaro.protocol import MAX_REQUEST_ID, NumericToken, Request, Response, encode_response, parse_frequency
 from simquaro.receivers._procedures import Procedures
@@ -79,6 +79,7 @@ class FictitiousReceiverSimulator:
         self._closed = False
         self._stop_timeout = False
         self._known_faults: set[str] = set()
+        self._synthesizer_activation = self.faults.activation_token("synthesizer_failure")
         self._procedures = Procedures(self)
         self._diagnose()
 
@@ -101,7 +102,7 @@ class FictitiousReceiverSimulator:
             entry["utc"] = utc
         self._incidents.append(entry)
         del self._incidents[:-32]
-        _LOGGER.info("receiver incident %s", entry)
+        _LOGGER.info("receiver incident %s; %s", entry, render_error(code, {}))
 
     def _emit(self, event, request, session_id):
         target = request.fields.get("name")
@@ -115,18 +116,22 @@ class FictitiousReceiverSimulator:
 
     def _diagnose(self):
         # Fault removal cannot recreate evidence destroyed by physical failure.
-        if self.faults.is_active("synthesizer_failure"):
+        activation = self.faults.activation_token("synthesizer_failure")
+        invalidated = activation is not self._synthesizer_activation
+        self._synthesizer_activation = activation
+        if invalidated or self.faults.is_active("synthesizer_failure"):
             self._frequency_verified = False
             self._calibrated = False
         current = {code for cause, code in _DIAGNOSTIC_CAUSES if self.faults.is_active(cause)}
-        for code in sorted(current - self._known_faults):
+        detected = current | ({"SYNTHESIZER_FAILURE"} if invalidated else set())
+        for code in sorted(detected - self._known_faults):
             self._incident(code)
         self._known_faults = current
 
     @staticmethod
     def _allowed(request, allowed):
         for key in request.metadata:
-            if key != "id":
+            if key not in ("id", "client_id"):
                 raise ProtocolError("UNKNOWN_PARAMETER", {"parameter": key})
         for key in request.fields:
             if key not in allowed:
@@ -229,6 +234,8 @@ class FictitiousReceiverSimulator:
         return result
 
     async def _tune(self, target):
+        self._diagnose()
+        activation = self.faults.activation_token("synthesizer_failure")
         deadline = self.clock.monotonic() + self.config.max_tuning_ms / 1000
         self._target = target
         if self._frequency != target:
@@ -240,8 +247,10 @@ class FictitiousReceiverSimulator:
                     else self.config.tuning_duration_ms) / 1000
         try:
             await self.clock.sleep(duration)
+            self._diagnose()
             if (self.clock.monotonic() > deadline or self.faults.is_active("frequency_lock_failure")
-                    or self.faults.is_active("synthesizer_failure")):
+                    or self.faults.is_active("synthesizer_failure")
+                    or activation is not self.faults.activation_token("synthesizer_failure")):
                 self._incident("FREQUENCY_LOCK_FAILED")
                 raise ProtocolError("FREQUENCY_LOCK_FAILED", {})
             self._frequency_verified = True

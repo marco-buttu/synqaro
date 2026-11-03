@@ -86,9 +86,10 @@ class Procedures:
             self._finish(attempt, "failed", error.code)
 
     def _check_reference(self):
+        self.model._diagnose()
         if self.model.faults.is_active("calibration_reference_unavailable"):
             raise ProtocolError("CALIBRATION_REFERENCE_UNAVAILABLE", {})
-        if self.model.faults.is_active("synthesizer_failure"):
+        if not self.model._frequency_verified:
             raise ProtocolError("FREQUENCY_LOCK_FAILED", {})
 
     async def _calibrate(self, attempt, request, session_id):

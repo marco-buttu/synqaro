@@ -4,8 +4,9 @@ Call the phase hooks once on actual entry, never on status polling. Call
 ``frequency_set_verified`` after committing a successful setting, followed by
 ``response_ready`` for its reply. Ordinary replies use ``response_ready`` only.
 Delivery rules on either hook conservatively overlap for compatibility checks.
-The caller applies returned delivery effects in order; persistent activations
-are observed separately through ``is_active``. This controller never sleeps,
+The caller applies returned delivery effects in order; persistent causes and
+their latest activation are observed through ``is_active`` and
+``activation_token``. This controller never sleeps,
 edits replies, changes model state, or resets itself on firmware reboot.
 """
 
@@ -200,6 +201,9 @@ class FaultController:
             raise ValueError("invalid scenario; provide a validated Scenario")
         self._lock = Lock()
         self._active = {effect.name: effect for effect in scenario.initial_faults}
+        # One replaceable identity per finite persistent cause, not a history or
+        # a wrapping counter. Clearing a cause must not erase its activation.
+        self._activations = {effect.name: object() for effect in scenario.initial_faults}
         self._rules: list[_ScheduledRule] = []
         self._next_id = 1
         self._last_event: dict | None = None
@@ -212,6 +216,7 @@ class FaultController:
             raise ValueError("delivery effects cannot be activated; schedule one at an allowed delivery event")
         with self._lock:
             self._active[name] = effect
+            self._activations[name] = object()
             _LOGGER.info("fault activated name=%s", name)
 
     def clear(self, name: str) -> None:
@@ -251,6 +256,17 @@ class FaultController:
         with self._lock:
             return name in self._active
 
+    def activation_token(self, name: str) -> object | None:
+        """Opaque latest activation identity; compare by identity, never consume.
+
+        Retained across clear and firmware reboot. Observers may independently
+        remember the token that their physical evidence was verified against.
+        """
+        if not _definition(name).persistent:
+            raise ValueError("activation tokens require a persistent fault")
+        with self._lock:
+            return self._activations.get(name)
+
     @staticmethod
     def validate_delivery_effects(effects: tuple[FaultEffect, ...]) -> None:
         """Check accumulated hook results before touching reply bytes.
@@ -279,6 +295,7 @@ class FaultController:
                 effect = FaultEffect(rule.name, rule.parameters, scheduled.rule_id, rule.when)
                 if _definition(rule.name).persistent:
                     self._active[rule.name] = effect
+                    self._activations[rule.name] = object()
                 else:
                     effects.append(effect)
                 scheduled.remaining -= 1

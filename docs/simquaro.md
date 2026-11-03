@@ -231,6 +231,10 @@ Single-instance errors retain `code`, `message`, and copyable command argument
 lists in `actions`. Runtime failures also retain their complete per-instance
 context under `error.outcome`. Configuration errors include explicit loader
 repair instructions. Ordinary diagnostics and worker JSON logs go to stderr.
+Logging uses ordinary synchronous stderr output: a stalled external log consumer
+can stall the process. Keep that consumer draining, or redirect stderr to a
+regular local log file and monitor its storage. Hardware/control-client
+backpressure bounds do not provide a nonblocking log-sink guarantee.
 Help remains ordinary usage text, including when `--json` is supplied.
 
 Foreground start/restart emit JSON Lines: one `start`/`restart` result per

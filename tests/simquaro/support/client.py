@@ -10,7 +10,7 @@ from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Context, Decimal, InvalidOperation, localcontext
 import re
 
 from simquaro.clock import SystemClock
@@ -99,7 +99,9 @@ def _descriptor(response, expected_id):
              "supported_procedures": ["calibrate", "scan"], "sampled_at_properties": ["frequency"]}
     valid = response.verb == "ok"
     valid &= all(type(fields.get(key)) is type(value) and fields.get(key) == value for key, value in literals.items())
-    valid &= all(isinstance(fields.get(key), NumericToken) and fields[key].text == value
+    valid &= all(isinstance(fields.get(key), NumericToken) and len(fields[key].text) <= 64
+                 and re.fullmatch(r"[0-9]+", fields[key].text) is not None
+                 and int(fields[key].text) == int(value)
                  for key, value in integers.items())
     for key, expected in numbers.items():
         value = fields.get(key)
@@ -145,8 +147,12 @@ def _refresh_usable(target, response):
         value = fields.get("value")
         try:
             number = Decimal(value.text) if isinstance(value, NumericToken) and len(value.text) <= 64 else None
-            valid &= (number is not None and 1 <= number <= 10 and number.as_tuple().exponent >= -6
-                      and fields.get("unit") == "GHz")
+            # At most 64 input characters; range-check before scaled arithmetic.
+            # Trailing zeroes are spelling, not evidence of off-grid precision.
+            with localcontext(Context(prec=80)):
+                valid &= (number is not None and 1 <= number <= 10
+                          and number * 1000000 == (number * 1000000).to_integral_value()
+                          and fields.get("unit") == "GHz")
         except InvalidOperation:
             valid = False
     else:

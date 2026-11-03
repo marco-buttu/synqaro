@@ -326,7 +326,7 @@ def main(argv: Sequence[str] | None = None, *, inventory: Mapping[str, InstanceC
         return int(error.code)
     except _Usage as error:
         actions = [["simquaro", "--help"], ["simquaro", "list"]]
-        if args is not None and args.command == "fault" and args.instance != "all":
+        if args is not None and args.command == "fault" and args.instance in configs:
             actions.insert(0, ["simquaro", "fault", "list", args.instance])
         output.emit("usage", error=_error("INVALID_USAGE", str(error), actions))
         return 2
