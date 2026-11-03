@@ -2,6 +2,7 @@
 
 import asyncio
 from dataclasses import replace
+import errno
 import fcntl
 import importlib.util
 import json
@@ -24,6 +25,69 @@ if importlib.util.find_spec("simquaro.runtime"):
     from simquaro.runtime import Runtime
 else:
     Runtime = None
+
+
+def _fd_targets(directory):
+    targets = []
+    for fd in directory.iterdir():
+        try:
+            targets.append(os.readlink(fd))
+        except FileNotFoundError:
+            # A live process can close an enumerated FD before readlink.
+            # A missing process directory must still fail the inspection.
+            directory.stat()
+    return targets
+
+
+class DescriptorSnapshotTests(unittest.TestCase):
+    def test_descriptor_closed_after_enumeration_is_ignored(self):
+        with tempfile.TemporaryDirectory(prefix="sq-fd-") as root:
+            closing_path = Path(root) / "closing"
+            retained_path = Path(root) / "retained"
+            with closing_path.open("w") as closing, retained_path.open("w") as retained:
+                directory = Path(f"/proc/{os.getpid()}/fd")
+                closing_fd = directory / str(closing.fileno())
+                retained_fd = directory / str(retained.fileno())
+                real_iterdir = Path.iterdir
+
+                def close_after_enumeration(path):
+                    entries = list(real_iterdir(path))
+                    self.assertIn(closing_fd, entries)
+                    self.assertIn(retained_fd, entries)
+                    closing.close()
+                    # Keep only the two real descriptors controlled by this test.
+                    return iter(fd for fd in entries if fd in (closing_fd, retained_fd))
+
+                with patch.object(Path, "iterdir", close_after_enumeration):
+                    self.assertEqual(_fd_targets(directory), [str(retained_path)])
+
+    def test_readlink_errors_other_than_missing_descriptor_remain_visible(self):
+        for error in (PermissionError(errno.EACCES, "permission denied"),
+                      OSError(errno.EIO, "I/O error")):
+            with self.subTest(errno=error.errno), patch("os.readlink", side_effect=error):
+                with self.assertRaises(type(error)) as raised:
+                    _fd_targets(Path(f"/proc/{os.getpid()}/fd"))
+                self.assertIs(raised.exception, error)
+
+    def test_missing_descriptor_directory_remains_visible(self):
+        with tempfile.TemporaryDirectory(prefix="sq-fd-") as root:
+            directory = Path(root) / "fd"
+            with self.assertRaises(FileNotFoundError):
+                _fd_targets(directory)
+            directory.mkdir()
+            entry = directory / "0"
+            entry.symlink_to(root)
+            real_iterdir = Path.iterdir
+
+            def remove_after_enumeration(path):
+                entries = list(real_iterdir(path))
+                entry.unlink()
+                directory.rmdir()
+                return iter(entries)
+
+            with patch.object(Path, "iterdir", remove_after_enumeration):
+                with self.assertRaises(FileNotFoundError):
+                    _fd_targets(directory)
 
 
 class RuntimeTests(unittest.IsolatedAsyncioTestCase):
@@ -502,7 +566,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         descendant_pid = int(marker.read_text())
         descendant_fd = os.pidfd_open(descendant_pid)
         try:
-            targets = [os.readlink(fd) for fd in Path(f"/proc/{descendant_pid}/fd").iterdir()]
+            targets = _fd_targets(Path(f"/proc/{descendant_pid}/fd"))
             self.assertFalse(any("receiver-a.lock" in path or "receiver-a.lifecycle" in path for path in targets))
             self.assertFalse(any(path.startswith("socket:") for path in targets))
             await self.runtime.stop("receiver-a")
