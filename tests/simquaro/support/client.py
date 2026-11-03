@@ -14,7 +14,8 @@ from decimal import Context, Decimal, InvalidOperation, localcontext
 import re
 
 from simquaro.clock import SystemClock
-from simquaro.errors import ProtocolError, render_error
+from simquaro.errors import ProtocolError
+from simquaro.models.fictitious_receiver.errors import render_error
 from simquaro.protocol import NumericToken, Response, Value, parse_response, recover_request_id
 
 

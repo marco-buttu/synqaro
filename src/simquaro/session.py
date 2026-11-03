@@ -109,8 +109,9 @@ class HardwareSession:
                     fields["rejected_name"] = target
             except ProtocolError:
                 pass
-            if not self.model.faults.is_active("clock_untrusted"):
-                fields["received_at"] = self.clock.utcnow().isoformat().replace("+00:00", "Z")
+            timestamp = self.model.utc_timestamp()
+            if timestamp is not None:
+                fields["received_at"] = timestamp
             await self._diagnostic(Response("error", request_id, fields))
             return
         self.high_water = request_id
@@ -150,9 +151,7 @@ class HardwareSession:
             # No delivery await may intervene between handle and this hook.
             effects = reply.delivery_effects + self._effects(reply.response, request)
             self.model.faults.validate_delivery_effects(effects)
-            events = {"response_ready"}
-            if request.verb == "set" and reply.response.verb == "ok":
-                events.add("frequency_set_verified")
+            events = {"response_ready", *reply.delivery_events}
             if reply.reboot_requested:
                 await asyncio.shield(self.server._accept_reboot(self, reply.response, effects, events))
             else:

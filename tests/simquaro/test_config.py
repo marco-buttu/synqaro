@@ -6,7 +6,8 @@ import math
 import unittest
 
 from simquaro.clock import SystemClock
-from simquaro.config import InstanceConfig, ReceiverConfig, validate_inventory
+from simquaro.config import InstanceConfig, validate_inventory
+from simquaro.models.fictitious_receiver.config import ReceiverConfig
 from simquaro.instances import load_inventory
 from tests.simquaro.support.clock import VirtualClock
 
@@ -38,7 +39,7 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(instance.model, "fictitious_receiver")
         self.assertEqual(instance.host, "127.0.0.1")
         self.assertEqual(load_inventory()["receiver-a"].port, 9001)
-        config = instance.receiver
+        config = instance.settings
         self.assertEqual(config.hardware_model, "fictitious_receiver")
         self.assertEqual(config.protocol_version, 1)
         self.assertEqual(config.frequency_min, 1)
@@ -63,7 +64,7 @@ class ConfigurationTests(unittest.TestCase):
             {"model": "foreign_model"}, {"model": "os.system"},
             {"host": ""}, {"host": "127.0.0.1\n"},
             {"port": -1}, {"port": 65536}, {"port": True}, {"port": 9001.5},
-            {"receiver": None},
+            {"settings": None},
         ):
             with self.subTest(instance=changes), self.assertRaises(ValueError):
                 replace(instance, **changes)
@@ -92,8 +93,8 @@ class ConfigurationTests(unittest.TestCase):
             {"calibrate_finalization_ms": 30000},
             {"calibrate_finalization_ms": 99},
         ):
-            with self.subTest(receiver=changes), self.assertRaises(ValueError):
-                replace(instance.receiver, **changes)
+            with self.subTest(settings=changes), self.assertRaises(ValueError):
+                replace(instance.settings, **changes)
 
     def test_inventory_port_range_and_key_name_agreement(self):
         instance = load_inventory()["receiver-a"]
@@ -120,17 +121,17 @@ class ConfigurationTests(unittest.TestCase):
         first = load_inventory()
         previous = first["receiver-a"]
         first["receiver-a"] = replace(previous, port=9002,
-                                      receiver=replace(previous.receiver, initial_frequency=6))
+                                      settings=replace(previous.settings, initial_frequency=6))
         self.assertEqual(previous.port, 9001)
-        self.assertEqual(previous.receiver.initial_frequency, 5)
+        self.assertEqual(previous.settings.initial_frequency, 5)
         self.assertEqual(load_inventory()["receiver-a"].port, 9001)
-        self.assertEqual(load_inventory()["receiver-a"].receiver.initial_frequency, 5)
+        self.assertEqual(load_inventory()["receiver-a"].settings.initial_frequency, 5)
         first.clear()
         self.assertEqual(set(load_inventory()), {"receiver-a"})
         with self.assertRaises(FrozenInstanceError):
             previous.port = 9003
         with self.assertRaises(FrozenInstanceError):
-            previous.receiver.initial_frequency = 7
+            previous.settings.initial_frequency = 7
         source = {previous.name: previous}
         result = validate_inventory(source)
         source.clear()

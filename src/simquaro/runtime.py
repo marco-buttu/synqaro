@@ -9,7 +9,7 @@ module never installs or removes the caller's signal handlers.
 
 import asyncio
 from collections.abc import Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 import os
 from pathlib import Path
 import secrets
@@ -21,7 +21,7 @@ import sys
 
 from simquaro._ownership import (Directory, OwnershipError, ProcessIdentity, birth,
                                 boot_id, coordinated, default_root, inode, name_checked, try_lock)
-from simquaro.config import InstanceConfig
+from simquaro.config import InstanceConfig, instance_record
 from simquaro.control import control_request
 from simquaro.faults import Scenario
 from simquaro.worker import encode_bootstrap
@@ -170,7 +170,7 @@ class Runtime:
 
     async def _query(self, config, record):
         envelope = await control_request(self.root / (config.name + ".sock"), "status", {})
-        common = {"process": "running", "configured": asdict(config), "startup_config": record["config"]}
+        common = {"process": "running", "configured": instance_record(config), "startup_config": record["config"]}
         if not envelope["ok"]:
             return _failure(config.name, OwnershipError("CONTROL_UNRESPONSIVE", "Process exists but control is unresponsive; run simquaro restart " + config.name + "."),
                             control="unresponsive", control_error=envelope["error"], **common)
@@ -190,7 +190,7 @@ class Runtime:
                     _, metadata, target = self._state(directory, name, lock_fd)
                     if target is None or target.exited:
                         return _outcome(name, "stopped", process="stopped", control="not_running",
-                                        configured=asdict(config), startup_config=metadata[0]["config"] if metadata else None)
+                                        configured=instance_record(config), startup_config=metadata[0]["config"] if metadata else None)
                     return await self._query(config, metadata[0])
                 finally:
                     if target:
@@ -251,7 +251,7 @@ class Runtime:
                 child._completion.add_done_callback(lambda _: self._children.pop(token, None))
                 record = {"version": 1, "name": name, "pid": process.pid, "uid": os.getuid(),
                           "host_boot": boot_id(), "birth": birth(process.pid), "run_token": token,
-                          "socket": socket_inode, "config": asdict(config)}
+                          "socket": socket_inode, "config": instance_record(config)}
                 target = ProcessIdentity(record)
                 meta_inode = directory.publish(name, record)
                 metadata = (record, meta_inode)
@@ -274,7 +274,7 @@ class Runtime:
                         runtime = status.get("runtime", {})
                         if runtime.get("control") == "ready" and runtime.get("hardware_listener") == "listening":
                             return StartResult(_outcome(name, "started", process="running", control="responsive",
-                                                       configured=asdict(config), startup_config=record["config"], status=status), child)
+                                                       configured=instance_record(config), startup_config=record["config"], status=status), child)
                     await asyncio.sleep(.02)
                 raise OwnershipError("WORKER_EXITED", "Worker exited during startup; correct the endpoint/profile error shown in stderr and restart " + name + ".")
         except BaseException as error:

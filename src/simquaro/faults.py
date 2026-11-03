@@ -1,45 +1,32 @@
-"""Finite external fault scenarios; execution belongs to the model and transport.
+"""Hardware-independent finite fault records, scheduling, and wire effects.
 
-Call the phase hooks once on actual entry, never on status polling. Call
-``frequency_set_verified`` after committing a successful setting, followed by
-``response_ready`` for its reply. Ordinary replies use ``response_ready`` only.
-Delivery rules on either hook conservatively overlap for compatibility checks.
-The caller applies returned delivery effects in order; persistent causes and
-their latest activation are observed through ``is_active`` and
-``activation_token``. This controller never sleeps,
-edits replies, changes model state, or resets itself on firmware reboot.
+Model catalogs and events are supplied explicitly to each controller. Records
+validate structure; controller admission validates model-dependent names/events.
 """
 
 from collections.abc import Mapping
 from dataclasses import dataclass
 import logging
+import re
 from threading import Lock
 from types import MappingProxyType
 
 
-EVENTS = ("response_ready", "frequency_set_verified", "calibrate_reference_measurement")
-DELIVERY_EVENTS = ("response_ready", "frequency_set_verified")
+EVENTS = ("response_ready",)
+DELIVERY_EVENTS = ("response_ready",)
 MAX_RULES = 64
 MAX_OCCURRENCES = 4294967295
 _LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class _Definition:
+class FaultDefinition:
     name: str
     persistent: bool
     effect: str
 
 
-_DEFINITIONS = tuple(_Definition(name, True, effect) for name, effect in (
-    ("calibration_reference_unavailable", "The physical calibration reference is unavailable; normal diagnostics and calibration fail accordingly."),
-    ("frequency_lock_failure", "The synthesizer cannot verify the requested frequency lock; tuning must report FREQUENCY_LOCK_FAILED."),
-    ("synthesizer_failure", "The physical synthesizer fails; normal diagnostics report SYNTHESIZER_FAILURE."),
-    ("frequency_read_failure", "Reading the physical frequency fails; firmware reports FREQUENCY_READ_FAILED without inventing a value."),
-    ("clock_untrusted", "UTC is untrusted; firmware reports CLOCK_UNTRUSTED and omits new UTC timestamps."),
-    ("procedure_stall", "Firmware procedure advancement stalls without blocking the event loop; normal deadlines still apply."),
-    ("stop_unconfirmed", "Physical activity continues despite a stop request; firmware cannot confirm a controlled stop."),
-)) + tuple(_Definition(name, False, effect) for name, effect in (
+_DEFINITIONS = tuple(FaultDefinition(name, False, effect) for name, effect in (
     ("drop_response", "Suppress this reply after execution; retain any already committed model changes."),
     ("delay_response", "Deliver this reply after delay_ms; retain any already committed model changes."),
     ("omit_lf", "Deliver the reply without its final LF terminator."),
@@ -55,14 +42,14 @@ _COMPATIBLE_DELIVERY_PAIRS = {
 }
 
 
-def _definition(name: str) -> _Definition:
+def _definition(name: str) -> FaultDefinition:
     if not isinstance(name, str) or name not in _BY_NAME:
         raise ValueError("unknown fault name; choose a name from FaultController.catalog()")
     return _BY_NAME[name]
 
 
 def _parameters(name: str, parameters: Mapping[str, int] | None) -> Mapping[str, int]:
-    _definition(name)
+    _identifier(name, "fault name")
     if parameters is None:
         parameters = {}
     if not isinstance(parameters, Mapping):
@@ -77,9 +64,13 @@ def _parameters(name: str, parameters: Mapping[str, int] | None) -> Mapping[str,
     return MappingProxyType(values)
 
 
+def _identifier(value: str, label: str) -> None:
+    if not isinstance(value, str) or re.fullmatch(r"[a-z][a-z0-9_]{0,63}", value) is None:
+        raise ValueError(f"invalid {label}; supply a lowercase symbolic identifier of at most 64 characters")
+
+
 def _event(event: str) -> None:
-    if not isinstance(event, str) or event not in EVENTS:
-        raise ValueError("unknown fault event; choose response_ready, frequency_set_verified, or calibrate_reference_measurement")
+    _identifier(event, "fault event")
 
 
 @dataclass(frozen=True)
@@ -135,10 +126,7 @@ class FaultRule:
     parameters: Mapping[str, int] | None = None
 
     def __post_init__(self) -> None:
-        definition = _definition(self.name)
         _event(self.when)
-        if not definition.persistent and self.when not in DELIVERY_EVENTS:
-            raise ValueError("delivery effect requires a delivery event; choose response_ready or frequency_set_verified")
         if type(self.times) is not int or not 1 <= self.times <= MAX_OCCURRENCES:
             raise ValueError("invalid occurrence count; supply integer times from 1 through 4294967295")
         object.__setattr__(self, "parameters", _parameters(self.name, self.parameters))
@@ -147,7 +135,7 @@ class FaultRule:
 def _compatible(first: FaultRule, second: FaultRule) -> bool:
     # Persistent causes do not compete for reply bytes. Every pair of wire
     # hooks can reach the same response, so checking equal events is unsafe.
-    if _definition(first.name).persistent or _definition(second.name).persistent:
+    if first.name not in _BY_NAME or second.name not in _BY_NAME:
         return True
     return frozenset((first.name, second.name)) in _COMPATIBLE_DELIVERY_PAIRS
 
@@ -166,7 +154,7 @@ class Scenario:
             raise ValueError("too many scenario rules; supply at most 64 rules")
         names = set()
         for effect in initial:
-            if (not isinstance(effect, FaultEffect) or not _definition(effect.name).persistent
+            if (not isinstance(effect, FaultEffect) or effect.name in _BY_NAME
                     or effect.rule_id is not None or effect.when is not None):
                 raise ValueError("invalid initial fault; supply a persistent FaultEffect without rule provenance")
             if effect.name in names:
@@ -196,9 +184,34 @@ class FaultController:
     evidence; callers add their process/boot/clock and actual-execution evidence.
     """
 
-    def __init__(self, scenario: Scenario = Scenario()):
+    def __init__(self, scenario: Scenario = Scenario(), *, definitions=(),
+                 events=EVENTS, delivery_events=DELIVERY_EVENTS):
         if not isinstance(scenario, Scenario):
             raise ValueError("invalid scenario; provide a validated Scenario")
+        definitions = tuple(definitions) + _DEFINITIONS
+        self._definitions = {}
+        for definition in definitions:
+            if not isinstance(definition, FaultDefinition):
+                raise ValueError("invalid fault definition; provide FaultDefinition records")
+            _identifier(definition.name, "fault name")
+            if definition.name in self._definitions:
+                raise ValueError("duplicate fault definition; do not override common wire effects")
+            if type(definition.persistent) is not bool or not isinstance(definition.effect, str):
+                raise ValueError("invalid fault definition fields")
+            if definition.name not in _BY_NAME and not definition.persistent:
+                raise ValueError("model faults must be persistent; delivery effects are common transport behavior")
+            self._definitions[definition.name] = definition
+        self.events, self.delivery_events = tuple(events), tuple(delivery_events)
+        for event in self.events:
+            _event(event)
+        if ("response_ready" not in self.events
+                or not set(self.delivery_events) <= set(self.events)):
+            raise ValueError("invalid fault event catalog; include response_ready and declared delivery events")
+        for effect in scenario.initial_faults:
+            if not self._definition(effect.name).persistent:
+                raise ValueError("initial faults must be persistent causes")
+        for rule in scenario.rules:
+            self.validate_rule(rule)
         self._lock = Lock()
         self._active = {effect.name: effect for effect in scenario.initial_faults}
         # One replaceable identity per finite persistent cause, not a history or
@@ -210,9 +223,21 @@ class FaultController:
         for rule in scenario.rules:
             self.schedule(rule.name, when=rule.when, times=rule.times, parameters=rule.parameters)
 
+    def _definition(self, name: str) -> FaultDefinition:
+        if not isinstance(name, str) or name not in self._definitions:
+            raise ValueError("unknown fault name; choose a name from this model's fault catalog")
+        return self._definitions[name]
+
+    def validate_rule(self, rule: FaultRule) -> None:
+        definition = self._definition(rule.name)
+        if rule.when not in self.events:
+            raise ValueError("unknown fault event; choose an event from this model's fault catalog")
+        if not definition.persistent and rule.when not in self.delivery_events:
+            raise ValueError("delivery effect requires a declared delivery event")
+
     def activate(self, name: str, parameters: Mapping[str, int] | None = None) -> None:
         effect = FaultEffect(name, parameters)
-        if not _definition(name).persistent:
+        if not self._definition(name).persistent:
             raise ValueError("delivery effects cannot be activated; schedule one at an allowed delivery event")
         with self._lock:
             self._active[name] = effect
@@ -220,7 +245,7 @@ class FaultController:
             _LOGGER.info("fault activated name=%s", name)
 
     def clear(self, name: str) -> None:
-        if not _definition(name).persistent:
+        if not self._definition(name).persistent:
             raise ValueError("delivery effects are not persistent; cancel their scheduled rule instead")
         with self._lock:
             self._active.pop(name, None)
@@ -229,6 +254,7 @@ class FaultController:
     def schedule(self, name: str, *, when: str, times: int = 1,
                  parameters: Mapping[str, int] | None = None) -> str:
         rule = FaultRule(name, when, times, parameters)
+        self.validate_rule(rule)
         with self._lock:
             if len(self._rules) >= MAX_RULES:
                 raise ValueError("scheduled rule capacity reached; cancel or consume a rule before adding another (limit 64)")
@@ -252,7 +278,7 @@ class FaultController:
             raise ValueError("rule is not pending; choose a live rule ID from snapshot()")
 
     def is_active(self, name: str) -> bool:
-        _definition(name)
+        self._definition(name)
         with self._lock:
             return name in self._active
 
@@ -262,7 +288,7 @@ class FaultController:
         Retained across clear and firmware reboot. Observers may independently
         remember the token that their physical evidence was verified against.
         """
-        if not _definition(name).persistent:
+        if not self._definition(name).persistent:
             raise ValueError("activation tokens require a persistent fault")
         with self._lock:
             return self._activations.get(name)
@@ -285,6 +311,8 @@ class FaultController:
     def emit(self, context: FaultContext) -> tuple[FaultEffect, ...]:
         if not isinstance(context, FaultContext):
             raise ValueError("invalid event context; supply a validated FaultContext")
+        if context.event not in self.events:
+            raise ValueError("unknown fault event; choose an event from this model's fault catalog")
         with self._lock:
             effects = []
             consumed = []
@@ -293,7 +321,7 @@ class FaultController:
                 if rule.when != context.event:
                     continue
                 effect = FaultEffect(rule.name, rule.parameters, scheduled.rule_id, rule.when)
-                if _definition(rule.name).persistent:
+                if self._definition(rule.name).persistent:
                     self._active[rule.name] = effect
                     self._activations[rule.name] = object()
                 else:
@@ -309,10 +337,9 @@ class FaultController:
                                     "target": context.target, "rule_ids": consumed}
             return tuple(effects)
 
-    @staticmethod
-    def catalog() -> list[dict]:
+    def catalog(self) -> list[dict]:
         result = []
-        for definition in _DEFINITIONS:
+        for definition in self._definitions.values():
             name = definition.name
             parameters = ({"delay_ms": {"type": "integer", "min": 1, "max": 60000}}
                           if name == "delay_response" else {})
@@ -323,12 +350,12 @@ class FaultController:
                 example["when"] = "response_ready"
             if parameters:
                 example["parameters"] = {"delay_ms": 2500}
-            compatible = [other.name for other in _DEFINITIONS
+            compatible = [other.name for other in self._definitions.values()
                           if other.persistent or definition.persistent
                           or frozenset((name, other.name)) in _COMPATIBLE_DELIVERY_PAIRS]
             result.append({"name": name, "persistent": definition.persistent,
                            "activation_allowed": definition.persistent,
-                           "events": list(EVENTS if definition.persistent else DELIVERY_EVENTS),
+                           "events": list(self.events if definition.persistent else self.delivery_events),
                            "parameters": parameters, "effect": definition.effect,
                            "limits": limits, "compatible_with": compatible,
                            "example": example})

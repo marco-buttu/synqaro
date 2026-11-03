@@ -5,7 +5,8 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from simquaro.errors import ProtocolError
-from simquaro.protocol import NumericToken, parse_frequency
+from simquaro.protocol import NumericToken
+from .validation import parse_frequency
 
 
 @dataclass
@@ -51,7 +52,7 @@ class Procedures:
     def start(self, name, request, session_id, targets, dwell_ms):
         model = self.model
         attempt = _Attempt(name, state="running", phase="preparation" if name == "calibrate" else "tuning",
-                           started_at=model._utc(), targets=targets, saved_frequency=model._frequency)
+                           started_at=model.utc_timestamp(), targets=targets, saved_frequency=model._frequency)
         self.attempts[name] = self.active = attempt
         if name == "calibrate":
             model._calibrated = False
@@ -179,7 +180,7 @@ class Procedures:
         attempt.state = state
         if attempt.name == "calibrate" and state != "succeeded":
             self.model._calibrated = False
-        attempt.finished_at = self.model._utc()
+        attempt.finished_at = self.model.utc_timestamp()
         attempt.error_code = error
         if error is not None:
             self.model._incident(error)

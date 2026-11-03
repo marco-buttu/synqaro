@@ -8,10 +8,10 @@ import json
 import unittest
 
 from simquaro.cli import main
-from simquaro.config import ReceiverConfig
+from simquaro.models.fictitious_receiver.config import ReceiverConfig
 from simquaro.faults import FaultContext
 from simquaro.protocol import NumericToken as N, Request, parse_response
-from simquaro.receivers.fictitious import FictitiousReceiverSimulator
+from simquaro.models.fictitious_receiver.model import FictitiousReceiverSimulator
 from tests.simquaro.support.client import LocalFailure, _descriptor, _refresh_usable
 from tests.simquaro.support.clock import VirtualClock
 from tests.simquaro.test_conformance import DESCRIPTOR, ScriptedClientCase, ok, wire_id
@@ -115,7 +115,7 @@ class PhysicalInvalidationTests(unittest.IsolatedAsyncioTestCase):
     async def test_incident_log_explains_known_code_and_retains_context(self):
         model = await self.model()
         model.faults.activate("synthesizer_failure")
-        with self.assertLogs("simquaro.receivers.fictitious", level="INFO") as logs:
+        with self.assertLogs("simquaro.models.fictitious_receiver.model", level="INFO") as logs:
             snap = model.snapshot()
         text = " ".join(logs.output)
         self.assertIn("Diagnostics confirm a synthesizer fault", text)

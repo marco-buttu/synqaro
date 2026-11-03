@@ -40,12 +40,6 @@ _DEFINITIONS = (
     ErrorDefinition("HARDWARE_FAULT", "An active hardware fault prevents this operation", (), "Inspect general status and resolve the active fault."),
     ErrorDefinition("NOT_RUNNING", "Selected procedure is not active", ("name",), "Inspect the selected procedure's retained status."),
     ErrorDefinition("NOT_CANCELLABLE", "Procedure or phase cannot accept cancellation", ("name",), "Inspect procedure status and wait for a cancellable phase or completion."),
-    ErrorDefinition("FREQUENCY_LOCK_FAILED", "The synthesizer did not reach and verify the requested frequency within its allowed time", (), "Read frequency and general status before deciding the next operation."),
-    ErrorDefinition("FREQUENCY_READ_FAILED", "The synthesizer frequency could not be read reliably", (), "Inspect synthesizer diagnostics before relying on a frequency value."),
-    ErrorDefinition("CALIBRATION_REFERENCE_UNAVAILABLE", "The calibration reference is unavailable", (), "Restore the calibration reference and inspect the retained procedure outcome."),
-    ErrorDefinition("CALIBRATION_TIMEOUT", "Calibration exceeded its execution deadline", (), "Inspect procedure and stop status before starting further work."),
-    ErrorDefinition("SCAN_TIMEOUT", "The scan exceeded its execution deadline", (), "Inspect procedure and stop status before starting further work."),
-    ErrorDefinition("SYNTHESIZER_FAILURE", "Diagnostics confirm a synthesizer fault", (), "Resolve the synthesizer fault and verify its diagnostics."),
     ErrorDefinition("STOP_TIMEOUT", "Controlled stop was not confirmed within its deadline", (), "Inspect actual hardware activity and resolve the unconfirmed stop before incompatible work."),
     ErrorDefinition("CLOCK_UNTRUSTED", "UTC clock is unavailable or untrusted; new UTC timestamps are omitted", (), "Restore host clock trust before operations requiring trustworthy UTC."),
 )
@@ -68,9 +62,10 @@ def _render_value(value: "Value") -> str:
     return _safe(str(value), 96)
 
 
-def render_error(code: str, fields: Mapping[str, "Value"]) -> str:
+def render_error(code: str, fields: Mapping[str, "Value"], *,
+                 catalog: Mapping[str, ErrorDefinition] = ERROR_CATALOG) -> str:
     """Render known or future errors without unbounded or control-bearing logs."""
-    definition = ERROR_CATALOG.get(code)
+    definition = catalog.get(code)
     message = definition.message if definition else "Unrecognized hardware error code"
     action = definition.action if definition else "Inspect the supplied context and receiver contract."
     # Both the number and size of rendered values are bounded independently of callers.

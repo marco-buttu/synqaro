@@ -1,6 +1,5 @@
 """Owned subprocess sentinels with explicit readiness and signal barriers."""
 
-from dataclasses import asdict
 import asyncio
 import fcntl
 import os
@@ -10,7 +9,7 @@ import socket
 import sys
 
 from simquaro._ownership import Directory, birth, boot_id, inode
-from simquaro.config import InstanceConfig
+from simquaro.config import InstanceConfig, instance_record
 
 
 def main():
@@ -86,7 +85,7 @@ def main():
         record = {"version": 1, "name": name, "pid": os.getpid(), "uid": os.getuid(),
                   "host_boot": boot_id(), "birth": birth(os.getpid()), "run_token": "c" * 32,
                   "socket": inode((root / (name + ".sock")).stat()),
-                  "config": asdict(InstanceConfig(name, "fictitious_receiver", "127.0.0.1", 0))}
+                  "config": instance_record(InstanceConfig(name, "fictitious_receiver", "127.0.0.1", 0))}
         directory.publish(name, record)
         def terminate(*_):
             (root / (name + ".term-seen")).touch()

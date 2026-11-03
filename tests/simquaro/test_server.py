@@ -5,10 +5,10 @@ import socket
 import unittest
 from unittest.mock import patch
 
-from simquaro.config import ReceiverConfig
-from simquaro.faults import FaultController
+from simquaro.models.fictitious_receiver.config import ReceiverConfig
+from simquaro.models.fictitious_receiver.faults import receiver_faults as FaultController
 from simquaro.protocol import Request
-from simquaro.receivers.fictitious import FictitiousReceiverSimulator
+from simquaro.models.fictitious_receiver.model import FictitiousReceiverSimulator
 from tests.simquaro.support.clock import VirtualClock
 
 try:

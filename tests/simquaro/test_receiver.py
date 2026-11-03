@@ -5,10 +5,10 @@ from dataclasses import replace
 import json
 import unittest
 
-from simquaro.config import ReceiverConfig
-from simquaro.faults import FaultController
+from simquaro.models.fictitious_receiver.config import ReceiverConfig
+from simquaro.models.fictitious_receiver.faults import receiver_faults as FaultController
 from simquaro.protocol import NumericToken as N, Request, encode_response, parse_request
-from simquaro.receivers.fictitious import FictitiousReceiverSimulator
+from simquaro.models.fictitious_receiver.model import FictitiousReceiverSimulator
 from tests.simquaro.support.clock import VirtualClock
 
 

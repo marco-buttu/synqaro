@@ -40,13 +40,113 @@ PYTHONPATH=src python3 -m simquaro list
 point. Examples below assume the environment's `bin` directory is on `PATH`.
 Use the same environment and user in both terminals.
 
+## Architecture and planned manual interfaces
+
+**Status: agreed direction, not implemented.** The current CLI starts and stops
+simulators, reports diagnostics, and controls injected faults. It does not yet
+provide an interactive hardware-protocol console. A browser GUI and a production
+communication library are also future work; the current test client is test
+support, not an operator interface.
+
+A simulator stands in for the physical apparatus and its firmware. A Synqaro
+Device is a separate control process that communicates with that apparatus or
+simulator. Starting a simulator does not start a Device.
+
+The planned manual command paths are:
+
+```mermaid
+flowchart TB
+    GUI["GUI in the browser"]
+
+    subgraph WEB["Local web server process"]
+        API["HTTP interface"]
+        LW["Communication library"]
+        API --> LW
+    end
+
+    subgraph TERMINAL["CLI process"]
+        CLI["Terminal commands"]
+        LC["Communication library"]
+        CLI --> LC
+    end
+
+    GUI <-->|HTTP| API
+    LW <-->|TCP| HW["Simulator or physical hardware"]
+    LC <-->|TCP| HW
+```
+
+The two library boxes mean the same reusable Python code running in separate
+processes, not two implementations or a single shared connection. The library
+constructs protocol messages, communicates over TCP, correlates replies, and
+reports errors. The CLI calls its functions directly. The browser sends HTTP
+requests to a local server, which calls those same functions and returns the
+results. A browser page cannot directly open an ordinary raw TCP connection.
+
+For example, setting a frequency from the terminal calls the library directly.
+Setting it from the GUI first reaches the local server over HTTP; the server
+then makes the same library call. Replies and communication failures return
+along the corresponding path. The GUI does not execute CLI commands in the
+background, and neither path bypasses TCP by calling simulator model methods.
+The interfaces should expose the actual transmitted requests, received replies,
+and communication diagnostics, not just an interpreted success message.
+
+The HTTP interface and the library's Python interface are different interfaces.
+The GUI is a required deliverable and the primary entry point for a human user
+to explore the simulator, not an optional future enhancement. Its installation,
+startup, and use must be documented and verified; a CLI-only delivery does not
+complete this follow-up work.
+
+Only GUI use requires the local web server to be running. Terminal commands,
+Python scripts, and automated tests remain usable without that server. Routing
+the CLI through HTTP is deliberately not the current direction. CLI and GUI can
+therefore be separate hardware clients and must obey the target's connection and
+concurrency limits.
+
+Simulator administration remains a separate path, not extra hardware commands:
+
+| Change | Planned application path |
+|---|---|
+| Operational property, such as frequency | Hardware protocol over TCP; no simulator restart |
+| Injected fault | Separate simulator test-control interface |
+| Startup settings, such as port or initial frequency | Save validated configuration and restart only the affected simulator |
+
+Fault injection and simulator startup editing are simulator-only functions, not
+features of physical hardware. The GUI should offer only supported settings and
+distinguish saved configuration from the configuration currently in use. The
+configuration storage format and editing operations still need a concrete design;
+no configuration editor or general hot reload is available today.
+
+### Planned validation workflow
+
+**Status: future work, not a hardware-ready test command.** The goal is one
+functional suite that uses the same communication library as Devices and manual
+interfaces, and can run against either a simulator or matching physical hardware.
+Select the endpoint and supported hardware profile rather than copying the
+scenarios into separate suites. Existing tests still include simulator-specific
+setup and a test-only client; they cannot all be redirected to hardware today.
+
+A few direct TCP checks remain independent of that library. They check literal
+protocol messages and deliberately invalid requests that the library normally
+prevents. They do not repeat the complete functional suite. Internal simulator
+tests and injected-fault scenarios also remain useful, but do not validate a
+physical apparatus by themselves.
+
+Automatic tests execute predefined scenarios and should produce readable results;
+manual CLI and GUI use let an operator explore commands and inspect exchanges.
+Neither replaces the other. A physical-hardware test that changes settings,
+starts procedures, or reboots must run only in an explicitly authorized context.
+Correct protocol replies do not prove the physical output is correct: verifying
+the actual frequency, for example, may require an independent measurement.
+
 ## Inventory and startup configuration
 
 The explicit Python loader is
 [`src/simquaro/instances.py`](../src/simquaro/instances.py), function
-`load_inventory()`. It returns validated frozen `InstanceConfig` and
-`ReceiverConfig` objects defined in
-[`src/simquaro/config.py`](../src/simquaro/config.py).
+`load_inventory()`. It returns frozen
+[`InstanceConfig`](../src/simquaro/config.py) records. Each record selects a model
+and holds that model's validated startup settings in `settings`. For the
+fictitious receiver, these are
+[`ReceiverConfig`](../src/simquaro/models/fictitious_receiver/config.py) objects.
 Edit that mapping to add named instances or change their endpoint, hardware
 identity, supported firmware profile, or initial settings. For an installed
 copy, locate the actual loader with:
@@ -70,12 +170,73 @@ inspected, never silently reconfigured. `status` JSON includes both `configured`
 (current loader values) and `startup_config` (the running process's values).
 There is no external file loader or general hot reload in this version.
 
+The internal Python spelling is now `settings=ReceiverConfig(...)`, not
+`receiver=ReceiverConfig(...)`. Receiver CLI JSON and runtime records still use
+the original `receiver` key; this refactor does not change their record format.
+
 Programmatic tests can construct configurations and typed
 `Scenario(initial_faults=(FaultEffect(...),), rules=(FaultRule(...),))` directly,
 then pass the scenario to `Runtime.start(config, scenario=scenario)`; files are
 not required. The CLI inventory starts with an empty scenario. Tests may also
 inject inventories and private roots into `simquaro.cli.main` without changing
 the global loader.
+
+## Code organization and adding a hardware model
+
+The common code handles **how messages travel**; each model defines **what the
+simulated apparatus does**. Models do not import the CLI, inventory, runtime, or
+registry. The registry is where the application explicitly selects a model.
+
+```text
+src/simquaro/
+  protocol.py             ASCII message parsing and encoding
+  errors.py               Common errors and bounded diagnostic rendering
+  faults.py               Finite fault scheduling and TCP delivery effects
+  model.py                Small model interface and reply type
+  config.py               Instance identity, endpoint, and record validation
+  registry.py             Explicit table of available model implementations
+  instances.py            Configured instances, not model implementations
+  server.py, session.py   TCP connections, IDs, deadlines, and delivery
+  runtime.py, worker.py   Process ownership and startup
+  cli.py, control.py      Operator commands and separate test control
+  models/
+    fictitious_receiver/
+      config.py           Supported receiver settings and their validation
+      validation.py       Exact frequency range/grid handling
+      errors.py, faults.py Receiver diagnostic and physical-fault catalogs
+      model.py            Receiver state and request behavior
+      procedures.py       Calibration, scan, and cancellation behavior
+```
+
+For example, the common parser recognizes a numeric value without deciding
+whether that value is a valid receiver frequency. That decision belongs to the
+receiver. Similarly, the transport knows how to delay a reply, but the receiver
+defines when frequency verification has actually happened.
+
+To add another hardware model implementing this protocol:
+
+1. Add its directory under `models/`, with a validated settings dataclass, model,
+   and any specific procedures, errors, and fault causes.
+2. Implement the small interface in
+   [`model.py`](../src/simquaro/model.py): handle requests, expose diagnostic
+   snapshots, supply boot identity and UTC availability, and support lifecycle
+   cleanup/reboot. Replies explicitly declare any model-specific delivery events.
+3. Add one `ModelDefinition` entry in
+   [`registry.py`](../src/simquaro/registry.py), selecting the settings type, model
+   factory, fault-controller factory, error catalog, and serialized settings key.
+4. Declare an instance in the inventory to run it, and supply its behavior tests.
+
+No changes to the parser, TCP session, worker, or CLI should be needed merely to
+select that model. No directories are created per instance: two receiver
+instances can use the same model with different settings and independent state.
+There is no automatic model discovery, plugin installation system, or new
+production model in this step. A tiny non-receiver fixture exists only in tests
+to verify this boundary; it is not an available simulator.
+
+The shared fault controller receives the model's finite catalog explicitly.
+Scenario records validate their shape; the selected controller rejects unknown
+causes and unsupported event combinations before startup or rule admission.
+Defining a new physical cause does not add a new hardware-protocol command.
 
 ## Foreground operation
 

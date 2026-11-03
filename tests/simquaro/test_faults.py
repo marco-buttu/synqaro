@@ -3,7 +3,8 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import unittest
 
-from simquaro.faults import FaultContext, FaultController, FaultEffect, FaultRule, Scenario
+from simquaro.faults import FaultContext, FaultEffect, FaultRule, Scenario
+from simquaro.models.fictitious_receiver.faults import receiver_faults as FaultController
 
 
 class FaultTests(unittest.TestCase):
@@ -196,7 +197,9 @@ class FaultTests(unittest.TestCase):
                         {"request_id": 0}, {"request_id": 2**32},
                         {"command": "x" * 65}, {"target": "bad\n"}):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
-                FaultContext(**({"event": "response_ready"} | changes))
+                # Shape is checked by the record; known events are checked by
+                # the selected model's controller, not a global receiver list.
+                FaultController().emit(FaultContext(**({"event": "response_ready"} | changes)))
 
     def test_catalog_and_snapshots_are_detached_bounded_json(self):
         faults = FaultController()

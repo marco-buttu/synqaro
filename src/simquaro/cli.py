@@ -4,7 +4,6 @@ import argparse
 import asyncio
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
-from dataclasses import asdict
 import json
 from pathlib import Path
 import re
@@ -12,10 +11,11 @@ import shlex
 import signal
 import sys
 
-from simquaro.config import InstanceConfig, validate_inventory
+from simquaro.config import InstanceConfig, instance_record, validate_inventory
 from simquaro.control import control_request
 from simquaro.errors import ERROR_CATALOG
-from simquaro.faults import FaultController, FaultRule
+from simquaro.faults import FaultRule
+from simquaro.registry import get_model
 from simquaro.runtime import Runtime
 
 
@@ -110,8 +110,10 @@ class _Output:
                 print("  injections: " + json.dumps(status["faults"], sort_keys=True), flush=True)
                 codes = list(general.get("fault_codes", []))
                 codes += [incident.get("code") for incident in status["model"].get("incidents", [])]
+                startup = result.get("startup_config") or result.get("configured") or {}
+                catalog = get_model(startup["model"]).error_catalog if "model" in startup else ERROR_CATALOG
                 for code in dict.fromkeys(codes):
-                    definition = ERROR_CATALOG.get(code)
+                    definition = catalog.get(code)
                     if definition:
                         print(f"  {code}: {definition.message}. {definition.action}", flush=True)
         elif isinstance(result, dict) and "catalog" in result:
@@ -129,7 +131,7 @@ class _Output:
             print(f"{instance + ': ' if instance else ''}{event}: {json.dumps(result, sort_keys=True)}", flush=True)
 
 
-def _fault_arguments(args):
+def _fault_arguments(args, definition):
     action = args.fault_action
     if action in ("list", "status"):
         return {}
@@ -137,7 +139,8 @@ def _fault_arguments(args):
         if re.fullmatch(r"rule-[1-9][0-9]{0,18}", args.rule_id) is None:
             raise _Usage("invalid rule ID; run simquaro fault status " + args.instance)
         return {"rule_id": args.rule_id}
-    catalog = {entry["name"]: entry for entry in FaultController.catalog()}
+    faults = definition.fault_factory()
+    catalog = {entry["name"]: entry for entry in faults.catalog()}
     if args.name not in catalog:
         raise _Usage("unknown fault " + repr(args.name) + "; run simquaro fault list " + args.instance)
     entry = catalog[args.name]
@@ -145,6 +148,7 @@ def _fault_arguments(args):
         parameters = {} if args.delay_ms is None else {"delay_ms": args.delay_ms}
         try:
             rule = FaultRule(args.name, args.when, args.times, parameters)
+            faults.validate_rule(rule)
         except ValueError as error:
             raise _Usage(str(error) + "; run simquaro fault list " + args.instance) from None
         return {"name": rule.name, "when": rule.when, "times": rule.times, "parameters": dict(rule.parameters)}
@@ -309,7 +313,7 @@ def main(argv: Sequence[str] | None = None, *, inventory: Mapping[str, InstanceC
                          ["simquaro", "list"], ["simquaro", "--help"]]))
             return 1
         if args.command == "list":
-            output.emit("list", result={"instances": [asdict(config) for config in configs.values()]})
+            output.emit("list", result={"instances": [instance_record(config) for config in configs.values()]})
             return 0
         if args.instance == "all" and args.command != "fault":
             selected = list(configs.values())
@@ -317,9 +321,10 @@ def main(argv: Sequence[str] | None = None, *, inventory: Mapping[str, InstanceC
             selected = [configs[args.instance]]
         else:
             raise _Usage("unknown instance " + repr(args.instance) + "; run simquaro list and select a configured name")
-        fault_arguments = _fault_arguments(args) if args.command == "fault" else None
+        definition = get_model(selected[0].model) if args.command == "fault" else None
+        fault_arguments = _fault_arguments(args, definition) if args.command == "fault" else None
         if args.command == "fault" and args.fault_action == "list":
-            output.emit("fault.list", instance=args.instance, result={"catalog": FaultController.catalog()})
+            output.emit("fault.list", instance=args.instance, result={"catalog": definition.fault_factory().catalog()})
             return 0
         return asyncio.run(_run(args, selected, runtime_root, output, fault_arguments))
     except SystemExit as error:

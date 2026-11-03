@@ -5,10 +5,12 @@ from decimal import Decimal, localcontext
 import tracemalloc
 import unittest
 
-from simquaro.config import ReceiverConfig
-from simquaro.errors import ERROR_CATALOG, ProtocolError, render_error
+from simquaro.models.fictitious_receiver.config import ReceiverConfig
+from simquaro.errors import ProtocolError
+from simquaro.models.fictitious_receiver.errors import ERROR_CATALOG, render_error
+from simquaro.models.fictitious_receiver.validation import parse_frequency
 from simquaro.protocol import (
-    NumericToken, Request, Response, encode_response, parse_frequency,
+    NumericToken, Request, Response, encode_response,
     parse_request, parse_response, recover_request_id,
 )
 

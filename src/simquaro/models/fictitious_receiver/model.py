@@ -5,18 +5,22 @@ delivery and the response_ready hook belong to the caller after handle returns.
 """
 
 import asyncio
-from dataclasses import dataclass, fields
+from dataclasses import fields
 from decimal import Context, Decimal, localcontext
 import logging
 import re
 import secrets
 
 from simquaro.clock import Clock, SystemClock
-from simquaro.config import ReceiverConfig
-from simquaro.errors import ProtocolError, render_error
-from simquaro.faults import FaultContext, FaultController, FaultEffect
-from simquaro.protocol import MAX_REQUEST_ID, NumericToken, Request, Response, encode_response, parse_frequency
-from simquaro.receivers._procedures import Procedures
+from simquaro.errors import ProtocolError
+from simquaro.faults import FaultContext, FaultController
+from simquaro.model import ModelReply
+from simquaro.protocol import MAX_REQUEST_ID, NumericToken, Request, Response, encode_response
+from .config import ReceiverConfig
+from .errors import render_error
+from .faults import receiver_faults
+from .procedures import Procedures
+from .validation import parse_frequency
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -43,20 +47,13 @@ def _json_fields(values):
             for key, value in values.items()}
 
 
-@dataclass(frozen=True)
-class ModelReply:
-    response: Response
-    delivery_effects: tuple[FaultEffect, ...] = ()
-    reboot_requested: bool = False
-
-
 class FictitiousReceiverSimulator:
     def __init__(self, config: ReceiverConfig, *, faults: FaultController | None = None,
                  clock: Clock | None = None):
         if not isinstance(config, ReceiverConfig):
             raise ValueError("invalid receiver configuration; provide a validated ReceiverConfig")
         self.config = config
-        self.faults = faults if faults is not None else FaultController()
+        self.faults = faults if faults is not None else receiver_faults()
         self.clock = clock if clock is not None else SystemClock()
         self._tasks: set[asyncio.Task] = set()
         self._incidents: list[dict] = []
@@ -68,7 +65,7 @@ class FictitiousReceiverSimulator:
 
     def _reset(self):
         self.boot_id = secrets.token_hex(16)
-        self.booted_at = self._utc()
+        self.booted_at = self.utc_timestamp()
         self._frequency = Decimal(str(self.config.initial_frequency))
         self._frequency_verified = not self.faults.is_active("synthesizer_failure")
         self._target: Decimal | None = None
@@ -89,7 +86,7 @@ class FictitiousReceiverSimulator:
         task.add_done_callback(self._tasks.discard)
         return task
 
-    def _utc(self):
+    def utc_timestamp(self):
         if self.faults.is_active("clock_untrusted"):
             return None
         return self.clock.utcnow().isoformat().replace("+00:00", "Z")
@@ -97,7 +94,7 @@ class FictitiousReceiverSimulator:
     def _incident(self, code):
         entry = {"code": code, "boot_id": self.boot_id,
                  "monotonic": self.clock.monotonic()}
-        utc = self._utc()
+        utc = self.utc_timestamp()
         if utc is not None:
             entry["utc"] = utc
         self._incidents.append(entry)
@@ -228,7 +225,7 @@ class FictitiousReceiverSimulator:
         if not self._frequency_verified:
             raise ProtocolError("VALUE_UNAVAILABLE", {"reason": "UNVERIFIED"})
         result = {"name": "frequency", "value": _number(self._frequency), "unit": "GHz"}
-        timestamp = self._utc()
+        timestamp = self.utc_timestamp()
         if timestamp is not None:
             result["sampled_at"] = timestamp
         return result
@@ -264,7 +261,8 @@ class FictitiousReceiverSimulator:
             await self._tune(target)
             effects = self._emit("frequency_set_verified", request, session_id)
             return ModelReply(Response("ok", request.request_id,
-                                      {"name": "frequency", "value": _number(self._frequency), "unit": "GHz"}), effects)
+                                      {"name": "frequency", "value": _number(self._frequency), "unit": "GHz"}), effects,
+                              delivery_events=("frequency_set_verified",))
         except ProtocolError as error:
             return self._error(request, error)
         finally:

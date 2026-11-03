@@ -1,6 +1,7 @@
 """The initial explicit inventory; model and runtime code receive its output."""
 
-from simquaro.config import InstanceConfig, ReceiverConfig, validate_inventory
+from simquaro.config import InstanceConfig, validate_inventory
+from simquaro.models.fictitious_receiver.config import ReceiverConfig
 
 
 def load_inventory() -> dict[str, InstanceConfig]:
@@ -10,6 +11,6 @@ def load_inventory() -> dict[str, InstanceConfig]:
             model="fictitious_receiver",
             host="127.0.0.1",
             port=9001,
-            receiver=ReceiverConfig(),
+            settings=ReceiverConfig(),
         ),
     })

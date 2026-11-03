@@ -17,7 +17,8 @@ import time
 import unittest
 from unittest.mock import patch
 
-from simquaro.config import InstanceConfig, ReceiverConfig
+from simquaro.config import InstanceConfig
+from simquaro.models.fictitious_receiver.config import ReceiverConfig
 from simquaro.control import control_request
 from simquaro.faults import FaultEffect, FaultRule, Scenario
 
@@ -172,7 +173,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_existing_instance_not_reconfigured_or_owned(self):
         first = await self.start()
-        changed = replace(self.config, receiver=ReceiverConfig(initial_frequency=7))
+        changed = replace(self.config, settings=ReceiverConfig(initial_frequency=7))
         second = await self.start(changed, scenario=Scenario((FaultEffect("clock_untrusted"),)))
         self.assertTrue(second.outcome["ok"], second.outcome)
         self.assertEqual(second.outcome["outcome"], "already_running")

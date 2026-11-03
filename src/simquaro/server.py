@@ -7,6 +7,7 @@ import logging
 import termios
 
 from simquaro.clock import SystemClock
+from simquaro.model import SimulatorModel
 from simquaro.session import HardwareSession, bounded
 
 
@@ -31,7 +32,7 @@ def _outgoing_bytes(writer):
 
 
 class HardwareServer:
-    def __init__(self, model, host, port, *, clock=None, max_clients=16):
+    def __init__(self, model: SimulatorModel, host, port, *, clock=None, max_clients=16):
         if type(max_clients) is not int or not 1 <= max_clients <= 16:
             raise ValueError("invalid hardware client limit; choose an integer from 1 through 16")
         self.model, self.host, self.port = model, host, port

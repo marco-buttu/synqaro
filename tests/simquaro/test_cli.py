@@ -1,7 +1,7 @@
 """Exercise the public CLI in isolated subprocesses and private runtimes."""
 
 import asyncio
-from dataclasses import asdict, replace
+from dataclasses import replace
 import json
 import os
 from pathlib import Path
@@ -11,7 +11,7 @@ import sys
 import tempfile
 import unittest
 
-from simquaro.config import InstanceConfig
+from simquaro.config import InstanceConfig, instance_record
 from simquaro._ownership import Directory, ProcessIdentity
 from simquaro.faults import FaultEffect, FaultRule, Scenario
 from simquaro.runtime import Runtime
@@ -56,13 +56,13 @@ class CliTests(unittest.IsolatedAsyncioTestCase):
         if module:
             command = [sys.executable, "-m", "simquaro", *arguments]
         else:
-            configurations = [asdict(value) for value in (inventory or self.inventory).values()]
+            configurations = [instance_record(value) for value in (inventory or self.inventory).values()]
             script = (
                 "import json,sys; from pathlib import Path; "
-                "from simquaro.config import InstanceConfig,ReceiverConfig; "
+                "from simquaro.config import instance_from_record; "
                 "from simquaro.cli import main; "
                 "configs=json.loads(sys.argv[1]); "
-                "inventory={c['name']:InstanceConfig(**{**c,'receiver':ReceiverConfig(**c['receiver'])}) for c in configs}; "
+                "inventory={c['name']:instance_from_record(c) for c in configs}; "
                 "sys.exit(main(sys.argv[3:],inventory=inventory,runtime_root=Path(sys.argv[2])))"
             )
             command = [sys.executable, "-c", script, json.dumps(configurations), str(self.root), *arguments]

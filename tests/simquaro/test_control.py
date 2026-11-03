@@ -7,10 +7,10 @@ import socket
 import tempfile
 import unittest
 
-from simquaro.config import ReceiverConfig
-from simquaro.faults import FaultController
+from simquaro.models.fictitious_receiver.config import ReceiverConfig
+from simquaro.models.fictitious_receiver.faults import receiver_faults as FaultController
 from simquaro.protocol import Request
-from simquaro.receivers.fictitious import FictitiousReceiverSimulator
+from simquaro.models.fictitious_receiver.model import FictitiousReceiverSimulator
 from simquaro.server import HardwareServer
 from tests.simquaro.support.clock import VirtualClock
 

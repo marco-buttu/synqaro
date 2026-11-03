@@ -5,7 +5,6 @@ expressions, imported model paths, pickle data or an inventory file.
 """
 
 import asyncio
-from dataclasses import asdict, fields
 from datetime import datetime, timezone
 import json
 import logging
@@ -16,10 +15,10 @@ import socket
 import sys
 import time
 
-from simquaro.config import InstanceConfig, ReceiverConfig
+from simquaro.config import InstanceConfig, instance_record, instance_from_record
 from simquaro.control import ControlServer
-from simquaro.faults import FaultController, FaultEffect, FaultRule, Scenario
-from simquaro.receivers.fictitious import FictitiousReceiverSimulator
+from simquaro.faults import FaultEffect, FaultRule, Scenario
+from simquaro.registry import get_model
 from simquaro.server import HardwareServer
 from simquaro._ownership import _unique
 
@@ -46,9 +45,7 @@ def decode_bootstrap(data):
         token = value["run_token"]
         if not isinstance(token, str) or re.fullmatch(r"[0-9a-f]{32}", token) is None:
             raise ValueError("invalid run token")
-        config = dict(_object(value["config"], {f.name for f in fields(InstanceConfig)}))
-        receiver = _object(config.pop("receiver"), {f.name for f in fields(ReceiverConfig)})
-        config = InstanceConfig(**config, receiver=ReceiverConfig(**receiver))
+        config = instance_from_record(value["config"])
         scenario = _object(value["scenario"], {"initial_faults", "rules"})
         if type(scenario["initial_faults"]) is not list or type(scenario["rules"]) is not list:
             raise ValueError("scenario must contain lists")
@@ -56,7 +53,11 @@ def decode_bootstrap(data):
                         for item in scenario["initial_faults"])
         rules = tuple(FaultRule(**_object(item, {"name", "when", "times", "parameters"}))
                       for item in scenario["rules"])
-        return config, Scenario(initial, rules), token
+        scenario = Scenario(initial, rules)
+        # Admit model-specific causes/events before starting a worker or touching
+        # hardware state; bootstrap never selects an arbitrary import path.
+        get_model(config.model).fault_factory(scenario)
+        return config, scenario, token
     except (TypeError, ValueError, UnicodeError, RecursionError) as error:
         raise ValueError("Invalid private bootstrap; use validated InstanceConfig and Scenario with supported fields and at most 64 KiB of data.") from error
 
@@ -64,7 +65,7 @@ def decode_bootstrap(data):
 def encode_bootstrap(config, scenario, run_token):
     if not isinstance(config, InstanceConfig) or not isinstance(scenario, Scenario):
         raise ValueError("Provide a validated InstanceConfig and Scenario.")
-    value = {"version": 1, "config": asdict(config), "run_token": run_token,
+    value = {"version": 1, "config": instance_record(config), "run_token": run_token,
              "scenario": {"initial_faults": [{"name": effect.name, "parameters": dict(effect.parameters)}
                                               for effect in scenario.initial_faults],
                           "rules": [{"name": rule.name, "when": rule.when, "times": rule.times,
@@ -115,8 +116,9 @@ async def serve(config, scenario, run_token, control_socket):
         loop.add_signal_handler(sig, stop.set)
     model = hardware = control = None
     try:
-        faults = FaultController(scenario)
-        model = FictitiousReceiverSimulator(config.receiver, faults=faults)
+        definition = get_model(config.model)
+        faults = definition.fault_factory(scenario)
+        model = definition.factory(config.settings, faults=faults)
         formatter.model = model
         hardware = HardwareServer(model, config.host, config.port)
         control = ControlServer(control_socket, model, faults, run_token=run_token,
