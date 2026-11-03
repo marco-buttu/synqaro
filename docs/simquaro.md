@@ -115,14 +115,23 @@ distinguish saved configuration from the configuration currently in use. The
 configuration storage format and editing operations still need a concrete design;
 no configuration editor or general hot reload is available today.
 
-### Planned validation workflow
+### Shared validation workflow
 
-**Status: future work, not a hardware-ready test command.** The goal is one
-functional suite that uses the same communication library as Devices and manual
-interfaces, and can run against either a simulator or matching physical hardware.
-Select the endpoint and supported hardware profile rather than copying the
-scenarios into separate suites. Existing tests still include simulator-specific
-setup and a test-only client; they cannot all be redirected to hardware today.
+`simquaro test receiver-a` runs five read-only checks through the shared
+production client, reporting five state-changing checks as not executed.
+`simquaro test receiver-a --allow-changes` also tests frequency rounding,
+calibration, scan, scan cancellation, and reboot (last). Run modifying checks
+only against an isolated, explicitly authorized target: they leave state changed.
+The command connects directly to the configured endpoint without requiring local
+simulator administration. The same cases can target matching physical firmware;
+that does not mean they have already been verified on physical hardware.
+
+Results distinguish passed, failed, and skipped cases, identity/firmware/boot
+evidence, and uncertain outcomes. Permission skips are expected in read-only
+mode; other incomplete checks or any failure make exit status 1. Usage errors
+exit 2. A failed/uncertain check blocks further mutations; no reset, retry of a
+mutation, or blind state restoration is attempted. Global `--json` emits case
+events and a final structured report. Internals/fault tests remain simulator-only.
 
 A few direct TCP checks remain independent of that library. They check literal
 protocol messages and deliberately invalid requests that the library normally

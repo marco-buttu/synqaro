@@ -25,20 +25,11 @@ class SmokeTests(unittest.IsolatedAsyncioTestCase):
         client = ConformanceClient(*address)
         self.addAsyncCleanup(client.close)
         await client.connect()
-        applied = await client.request("set", {"name": "frequency", "value": NumericToken("5.5"), "unit": "GHz"})
-        self.assertEqual(str(applied.fields["value"]), "5.5")
-        self.assertEqual(str((await client.request("get", {"name": "frequency"})).fields["value"]), "5.5")
-        for name, fields in (
-            ("calibrate", {"name": "calibrate"}),
-            ("scan", {"name": "scan", "start": NumericToken("5"), "stop": NumericToken("5.2"),
-                      "unit": "GHz", "dwell_ms": NumericToken("1")}),
-        ):
-            self.assertEqual((await client.request("run", fields)).verb, "accepted")
-            async with asyncio.timeout(35 if name == "calibrate" else 25):
-                while True:
-                    status = await client.request("status", {"name": name})
-                    if status.fields["state"] not in ("running", "cancelling"):
-                        break
-                    await asyncio.sleep(.5)
-            self.assertEqual(status.fields["state"], "succeeded")
-        self.assertEqual(str((await client.request("get", {"name": "frequency"})).fields["value"]), "5.2")
+        from simquaro.checks import run_checks
+        from simquaro.models.fictitious_receiver.checks import CHECKS
+        selected = tuple(case for case in CHECKS if case.name in (
+            "set_frequency_rounding", "calibrate", "scan"))
+        report = await run_checks(client, selected, allow_changes=True)
+        self.assertEqual(report.exit_code, 0, report.as_dict())
+        self.assertEqual(len(report.results), 3)
+        self.assertEqual(model.snapshot()["actual"]["frequency"], "5.2")

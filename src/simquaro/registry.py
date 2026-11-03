@@ -10,6 +10,7 @@ from simquaro.models.fictitious_receiver.config import ReceiverConfig
 from synqaro_protocol.profiles.fictitious_receiver import ERROR_CATALOG
 from simquaro.models.fictitious_receiver.faults import receiver_faults
 from simquaro.models.fictitious_receiver.model import FictitiousReceiverSimulator
+from simquaro.models.fictitious_receiver.checks import CHECKS, client_factory
 
 
 @dataclass(frozen=True)
@@ -19,12 +20,14 @@ class ModelDefinition:
     fault_factory: Callable[[Scenario], FaultController]
     error_catalog: Mapping[str, ErrorDefinition]
     config_key: str
+    client_factory: Callable | None = None
+    checks: tuple = ()
 
 
 MODELS = {
     "fictitious_receiver": ModelDefinition(
         ReceiverConfig, FictitiousReceiverSimulator, receiver_faults,
-        ERROR_CATALOG, "receiver"),
+        ERROR_CATALOG, "receiver", client_factory, CHECKS),
 }
 
 

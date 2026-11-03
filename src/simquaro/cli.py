@@ -4,6 +4,7 @@ import argparse
 import asyncio
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
+from dataclasses import asdict
 import json
 from pathlib import Path
 import re
@@ -37,6 +38,9 @@ def _parser():
     console = commands.add_parser("console", help="exchange literal diagnostic text/bytes with a target")
     console.add_argument("instance", metavar="INSTANCE")
     console.add_argument("--raw", action="store_true", help="decode escapes; do not append LF")
+    checks = commands.add_parser("test", help="run shared hardware checks (read-only by default)")
+    checks.add_argument("instance", metavar="INSTANCE")
+    checks.add_argument("--allow-changes", action="store_true", help="allow setting changes, procedures and reboot")
     for action in ("status", "start", "stop", "restart"):
         command = commands.add_parser(action, help=f"{action} one configured instance or all")
         command.add_argument("instance", metavar="INSTANCE|all")
@@ -89,6 +93,16 @@ class _Output:
                   error=error)
 
     def _human(self, event, instance, result):
+        if event == "test.case":
+            print(f"{result['state'].upper():7} {result['name']}"
+                  + (f": {result['reason']}" if result['reason'] else ""), flush=True)
+            return
+        if event == "test.finished":
+            counts = result["counts"]
+            print(f"{instance}: {counts['passed']} passed, {counts['failed']} failed, "
+                  f"{counts['skipped']} not executed; "
+                  + ("read-only checks" if result["read_only"] else "state-changing checks; hardware state may have changed"), flush=True)
+            return
         if isinstance(result, dict) and "instances" in result:
             for item in result["instances"]:
                 if "outcome" in item:
@@ -257,6 +271,26 @@ async def _run(args, configs, runtime_root, output, fault_arguments):
     if args.command == "console":
         from simquaro.console import run_console
         return await run_console(configs[0], raw=args.raw, structured=output.structured, emit=output.emit)
+    if args.command == "test":
+        from simquaro.checks import run_checks
+        config = configs[0]
+        definition = get_model(config.model)
+        if definition.client_factory is None or not definition.checks:
+            output.emit("test.finished", instance=config.name,
+                        error=_error("UNSUPPORTED_PROFILE", "No shared checks are registered for this model.",
+                                     [["simquaro", "console", config.name]]))
+            return 1
+        client = definition.client_factory(config.host, config.port, config.settings,
+                                           read_only=not args.allow_changes)
+        output.emit("test.started", instance=config.name,
+                    result={"host": config.host, "port": config.port, "model": config.model,
+                            "read_only": not args.allow_changes,
+                            "warning": "Modifying tests leave state changed; use an isolated target" if args.allow_changes else ""})
+        report = await run_checks(client, definition.checks, allow_changes=args.allow_changes,
+            emit=lambda case: output.emit("test.case", instance=config.name, result=asdict(case)))
+        output.emit("test.finished", instance=config.name,
+                    result={**report.as_dict(), "read_only": not args.allow_changes})
+        return report.exit_code
     runtime = Runtime(runtime_root)
     if args.command in ("start", "restart"):
         return await _foreground(runtime, configs, args.command, output)
