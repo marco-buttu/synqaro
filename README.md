@@ -15,4 +15,5 @@ AI-native control and engineering platform for complex distributed systems.
 
 ### Development and testing
 
+- [Getting started](docs/getting_started.md)
 - [Simquaro operator guide](docs/simquaro.md)
