@@ -34,6 +34,9 @@ def _parser():
     parser.add_argument("--json", action="store_true", help="emit version-1 JSON records; foreground commands emit JSON Lines")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("list", help="list the explicit configured inventory")
+    console = commands.add_parser("console", help="exchange literal diagnostic text/bytes with a target")
+    console.add_argument("instance", metavar="INSTANCE")
+    console.add_argument("--raw", action="store_true", help="decode escapes; do not append LF")
     for action in ("status", "start", "stop", "restart"):
         command = commands.add_parser(action, help=f"{action} one configured instance or all")
         command.add_argument("instance", metavar="INSTANCE|all")
@@ -251,6 +254,9 @@ async def _foreground(runtime, configs, action, output):
 
 
 async def _run(args, configs, runtime_root, output, fault_arguments):
+    if args.command == "console":
+        from simquaro.console import run_console
+        return await run_console(configs[0], raw=args.raw, structured=output.structured, emit=output.emit)
     runtime = Runtime(runtime_root)
     if args.command in ("start", "restart"):
         return await _foreground(runtime, configs, args.command, output)
@@ -315,7 +321,7 @@ def main(argv: Sequence[str] | None = None, *, inventory: Mapping[str, InstanceC
         if args.command == "list":
             output.emit("list", result={"instances": [instance_record(config) for config in configs.values()]})
             return 0
-        if args.instance == "all" and args.command != "fault":
+        if args.instance == "all" and args.command in ("start", "stop", "restart", "status"):
             selected = list(configs.values())
         elif args.instance in configs:
             selected = [configs[args.instance]]
@@ -329,6 +335,8 @@ def main(argv: Sequence[str] | None = None, *, inventory: Mapping[str, InstanceC
         return asyncio.run(_run(args, selected, runtime_root, output, fault_arguments))
     except SystemExit as error:
         return int(error.code)
+    except KeyboardInterrupt:
+        return 130
     except _Usage as error:
         actions = [["simquaro", "--help"], ["simquaro", "list"]]
         if args is not None and args.command == "fault" and args.instance in configs:

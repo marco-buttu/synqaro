@@ -42,11 +42,10 @@ Use the same environment and user in both terminals.
 
 ## Architecture and planned manual interfaces
 
-**Status: agreed direction, not implemented.** The current CLI starts and stops
-simulators, reports diagnostics, and controls injected faults. It does not yet
-provide an interactive hardware-protocol console. A browser GUI and a production
-communication library are also future work; the current test client is test
-support, not an operator interface.
+**Status: partially implemented.** The CLI starts/stops simulators, controls
+injected faults, and provides the manual console below. The shared production
+client is available under `synqaro_protocol`; tests construct that same client.
+The required browser GUI and external configuration are still being implemented.
 
 A simulator stands in for the physical apparatus and its firmware. A Synqaro
 Device is a separate control process that communicates with that apparatus or
@@ -137,6 +136,41 @@ Neither replaces the other. A physical-hardware test that changes settings,
 starts procedures, or reboots must run only in an explicitly authorized context.
 Correct protocol replies do not prove the physical output is correct: verifying
 the actual frequency, for example, may require an independent measurement.
+
+## Manual TCP console
+
+Start the simulator in one terminal, then in another run:
+
+```sh
+simquaro console receiver-a
+```
+
+Enter a complete ASCII message such as `#status <id=1>` and press Enter. Normal
+mode appends LF; it does not validate syntax, insert IDs, or send startup probes.
+Replies display escaped bytes, so terminal-control characters cannot execute.
+Each console opens its own persistent TCP connection. The selected inventory's
+endpoint can also refer to physical hardware; no local simulator is required.
+
+For partial requests or arbitrary bytes, use:
+
+```sh
+simquaro console receiver-a --raw
+```
+
+Here Enter submits exactly the represented bytes without appending LF. Enter
+`#status <id=1>\n` for a complete request, or `#status <id=1>` deliberately
+without its terminator. Supported escapes are `\n`, `\r`, `\t`, `\xNN`, and `\\`.
+For example `text\x00\xFF\n` sends a NUL and byte FF among ordinary ASCII.
+Invalid escape notation sends nothing; invalid hardware-protocol input is allowed.
+
+A no-data notice after two seconds is a local observation, not a firmware error,
+and does not close the connection or send probes. Firmware may close for oversized
+or incomplete messages. Reopen with the displayed command; nothing is replayed.
+Ctrl+C closes the console; it does not cancel an executing hardware procedure.
+EOF on piped stdin half-closes transmission and observes replies for up to two
+seconds. `simquaro --json console receiver-a --raw` emits version-1 JSON Lines.
+Diagnostic submissions are locally capped at 64 KiB, independently of firmware's
+4096-byte message limit, so oversized-message testing remains possible.
 
 ## Inventory and startup configuration
 
