@@ -7,7 +7,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from simquaro.protocol import Value
+    from synqaro_protocol.codec import Value
 
 
 @dataclass(frozen=True)

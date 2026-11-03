@@ -4,7 +4,7 @@ import asyncio
 import re
 import unittest
 
-from simquaro.protocol import NumericToken
+from synqaro_protocol.codec import NumericToken
 from tests.simquaro.support.clock import VirtualClock
 from tests.simquaro.test_server import turns
 

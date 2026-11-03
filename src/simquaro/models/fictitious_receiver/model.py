@@ -11,11 +11,11 @@ import logging
 import re
 import secrets
 
-from simquaro.clock import Clock, SystemClock
-from simquaro.errors import ProtocolError
+from synqaro_protocol.clock import Clock, SystemClock
+from synqaro_protocol.errors import ProtocolError
 from simquaro.faults import FaultContext, FaultController
 from simquaro.model import ModelReply
-from simquaro.protocol import MAX_REQUEST_ID, NumericToken, Request, Response, encode_response
+from synqaro_protocol.codec import MAX_REQUEST_ID, NumericToken, Request, Response, encode_response
 from .config import ReceiverConfig
 from .errors import render_error
 from .faults import receiver_faults

@@ -4,8 +4,8 @@ import asyncio
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from simquaro.errors import ProtocolError
-from simquaro.protocol import NumericToken
+from synqaro_protocol.errors import ProtocolError
+from synqaro_protocol.codec import NumericToken
 from .validation import parse_frequency
 
 

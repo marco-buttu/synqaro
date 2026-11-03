@@ -10,7 +10,7 @@ from unittest.mock import patch
 from simquaro.config import InstanceConfig
 from simquaro.control import control_request
 from simquaro.faults import FaultEffect, FaultRule, Scenario
-from simquaro.protocol import NumericToken
+from synqaro_protocol.codec import NumericToken
 from simquaro.runtime import Runtime
 from tests.simquaro.test_conformance import DESCRIPTOR, ScriptedClientCase, GENERAL, ok, wire_id
 from tests.simquaro.test_server import RawSessionCase, turns

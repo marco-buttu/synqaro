@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import re
 from typing import TypeAlias
 
-from simquaro.errors import ProtocolError
+from synqaro_protocol.errors import ProtocolError
 
 
 MAX_MESSAGE_BYTES = 4096
@@ -248,7 +248,7 @@ def parse_response(frame: bytes) -> Response:
     return response
 
 
-def _encode_scalar(value: Scalar) -> str:
+def _encode_scalar(value: Scalar, *, quoted: bool = False) -> str:
     if isinstance(value, NumericToken):
         return value.text
     if isinstance(value, bool):
@@ -256,24 +256,52 @@ def _encode_scalar(value: Scalar) -> str:
     if (not isinstance(value, str) or len(value) > MAX_MESSAGE_BYTES
             or any(not " " <= character <= "~" for character in value)):
         raise ProtocolError("MALFORMED_REQUEST", {})
-    if (value and _NUMBER.fullmatch(value) is None and value not in ("true", "false")
+    if (not quoted and value and _NUMBER.fullmatch(value) is None and value not in ("true", "false")
             and not any(character in ' ,<>=[]"\\' for character in value)):
         return value
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def _encode_value(value: Value) -> str:
+def _encode_value(value: Value, *, quoted: bool = False) -> str:
     if not isinstance(value, list):
-        return _encode_scalar(value)
+        return _encode_scalar(value, quoted=quoted)
     parts = []
     size = 2
     for item in value:
-        encoded = _encode_scalar(item)
+        encoded = _encode_scalar(item, quoted=quoted)
         size += len(encoded) + (2 if parts else 0)
         if size > MAX_MESSAGE_BYTES:
             raise ProtocolError("MALFORMED_REQUEST", {})
         parts.append(encoded)
     return "[" + ", ".join(parts) + "]"
+
+
+def encode_request(request: Request) -> bytes:
+    """Encode bounded requests, retaining numeric spellings and quoted strings."""
+    if (not isinstance(request.verb, str) or _NAME.fullmatch(request.verb) is None
+            or type(request.request_id) is not int
+            or not 1 <= request.request_id <= MAX_REQUEST_ID
+            or "id" in request.metadata):
+        raise ProtocolError("MALFORMED_REQUEST", {})
+    def pairs(values):
+        result = []
+        size = 0
+        for key, value in values.items():
+            if not isinstance(key, str) or _NAME.fullmatch(key) is None:
+                raise ProtocolError("MALFORMED_REQUEST", {})
+            part = key + "=" + _encode_value(value, quoted=True)
+            size += len(part) + 2
+            if size > MAX_MESSAGE_BYTES:
+                raise ProtocolError("MALFORMED_REQUEST", {})
+            result.append(part)
+        return ", ".join(result)
+    metadata = pairs(request.metadata)
+    body = pairs(request.fields)
+    frame = (f"#{request.verb} <id={request.request_id}"
+             + (", " + metadata if metadata else "") + ">"
+             + (": " + body if body else "") + "\n").encode("ascii")
+    parse_request(frame)
+    return frame
 
 
 def encode_response(response: Response) -> bytes:

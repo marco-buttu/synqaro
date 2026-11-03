@@ -3,8 +3,8 @@
 from functools import partial
 from types import MappingProxyType
 
-from simquaro.errors import ErrorDefinition, ERROR_CATALOG as COMMON_ERRORS
-from simquaro.errors import render_error as _render_error
+from synqaro_protocol.errors import ErrorDefinition, ERROR_CATALOG as COMMON_ERRORS
+from synqaro_protocol.errors import render_error as _render_error
 
 
 _DEFINITIONS = (

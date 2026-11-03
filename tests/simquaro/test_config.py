@@ -5,7 +5,7 @@ from decimal import Inexact, InvalidOperation, Rounded, localcontext
 import math
 import unittest
 
-from simquaro.clock import SystemClock
+from synqaro_protocol.clock import SystemClock
 from simquaro.config import InstanceConfig, validate_inventory
 from simquaro.models.fictitious_receiver.config import ReceiverConfig
 from simquaro.instances import load_inventory

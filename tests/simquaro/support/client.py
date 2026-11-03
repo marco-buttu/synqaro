@@ -13,10 +13,10 @@ from datetime import datetime
 from decimal import Context, Decimal, InvalidOperation, localcontext
 import re
 
-from simquaro.clock import SystemClock
-from simquaro.errors import ProtocolError
+from synqaro_protocol.clock import SystemClock
+from synqaro_protocol.errors import ProtocolError
 from simquaro.models.fictitious_receiver.errors import render_error
-from simquaro.protocol import NumericToken, Response, Value, parse_response, recover_request_id
+from synqaro_protocol.codec import NumericToken, Response, Value, parse_response, recover_request_id
 
 
 class LocalFailure(Exception):

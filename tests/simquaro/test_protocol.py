@@ -6,10 +6,10 @@ import tracemalloc
 import unittest
 
 from simquaro.models.fictitious_receiver.config import ReceiverConfig
-from simquaro.errors import ProtocolError
+from synqaro_protocol.errors import ProtocolError
 from simquaro.models.fictitious_receiver.errors import ERROR_CATALOG, render_error
 from simquaro.models.fictitious_receiver.validation import parse_frequency
-from simquaro.protocol import (
+from synqaro_protocol.codec import (
     NumericToken, Request, Response, encode_response,
     parse_request, parse_response, recover_request_id,
 )

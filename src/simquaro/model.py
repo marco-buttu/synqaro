@@ -3,9 +3,9 @@
 from dataclasses import dataclass
 from typing import Protocol
 
-from simquaro.clock import Clock
+from synqaro_protocol.clock import Clock
 from simquaro.faults import FaultController, FaultEffect
-from simquaro.protocol import Request, Response
+from synqaro_protocol.codec import Request, Response
 
 
 @dataclass(frozen=True)

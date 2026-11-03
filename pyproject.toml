@@ -14,4 +14,4 @@ simquaro = "simquaro.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["simquaro*"]
+include = ["simquaro*", "synqaro_protocol*"]

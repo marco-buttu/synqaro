@@ -3,8 +3,8 @@
 from decimal import Context, Decimal, ROUND_HALF_UP, localcontext
 import re
 
-from simquaro.errors import ProtocolError
-from simquaro.protocol import NumericToken, Value
+from synqaro_protocol.errors import ProtocolError
+from synqaro_protocol.codec import NumericToken, Value
 from .config import ReceiverConfig
 
 

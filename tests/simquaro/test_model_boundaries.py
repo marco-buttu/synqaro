@@ -8,10 +8,10 @@ import json
 import unittest
 from unittest.mock import patch
 
-from simquaro.clock import SystemClock
+from synqaro_protocol.clock import SystemClock
 from simquaro.config import InstanceConfig
 from simquaro.faults import FaultContext, FaultController, FaultEffect, Scenario
-from simquaro.protocol import NumericToken, Response
+from synqaro_protocol.codec import NumericToken, Response
 from simquaro.server import HardwareServer
 from simquaro.worker import encode_bootstrap, decode_bootstrap
 

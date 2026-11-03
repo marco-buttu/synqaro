@@ -4,28 +4,15 @@ import asyncio
 from dataclasses import dataclass
 import logging
 
-from simquaro.errors import ProtocolError
+from synqaro_protocol.errors import ProtocolError
 from simquaro.faults import FaultContext
-from simquaro.protocol import MAX_MESSAGE_BYTES, NumericToken, Response, encode_response, parse_request, recover_request_id
+from synqaro_protocol.codec import MAX_MESSAGE_BYTES, NumericToken, Response, encode_response, parse_request, recover_request_id
 
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def bounded(awaitable, clock, deadline):
-    """Await one operation against an absolute monotonic deadline; own both tasks."""
-    operation = asyncio.ensure_future(awaitable)
-    timer = asyncio.create_task(clock.sleep(max(0, deadline - clock.monotonic())))
-    try:
-        done, _ = await asyncio.wait((operation, timer), return_when=asyncio.FIRST_COMPLETED)
-        if operation in done and clock.monotonic() <= deadline:
-            return operation.result()
-        raise TimeoutError
-    finally:
-        for task in (operation, timer):
-            if not task.done():
-                task.cancel()
-        await asyncio.gather(operation, timer, return_exceptions=True)
+from synqaro_protocol.clock import bounded
 
 
 def _text(value, limit=64):

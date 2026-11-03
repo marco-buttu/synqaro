@@ -10,7 +10,7 @@ import unittest
 from simquaro.cli import main
 from simquaro.models.fictitious_receiver.config import ReceiverConfig
 from simquaro.faults import FaultContext
-from simquaro.protocol import NumericToken as N, Request, parse_response
+from synqaro_protocol.codec import NumericToken as N, Request, parse_response
 from simquaro.models.fictitious_receiver.model import FictitiousReceiverSimulator
 from tests.simquaro.support.client import LocalFailure, _descriptor, _refresh_usable
 from tests.simquaro.support.clock import VirtualClock

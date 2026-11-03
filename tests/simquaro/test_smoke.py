@@ -4,7 +4,7 @@ import asyncio
 import unittest
 
 from simquaro.models.fictitious_receiver.config import ReceiverConfig
-from simquaro.protocol import NumericToken
+from synqaro_protocol.codec import NumericToken
 from simquaro.models.fictitious_receiver.model import FictitiousReceiverSimulator
 from simquaro.server import HardwareServer
 

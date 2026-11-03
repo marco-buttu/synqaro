@@ -13,7 +13,7 @@ import sys
 
 from simquaro.config import InstanceConfig, instance_record, validate_inventory
 from simquaro.control import control_request
-from simquaro.errors import ERROR_CATALOG
+from synqaro_protocol.errors import ERROR_CATALOG
 from simquaro.faults import FaultRule
 from simquaro.registry import get_model
 from simquaro.runtime import Runtime

@@ -3,7 +3,7 @@
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
-from simquaro.errors import ErrorDefinition
+from synqaro_protocol.errors import ErrorDefinition
 from simquaro.faults import FaultController, Scenario
 from simquaro.model import SimulatorModel
 from simquaro.models.fictitious_receiver.config import ReceiverConfig

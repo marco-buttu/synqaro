@@ -6,7 +6,7 @@ import fcntl
 import logging
 import termios
 
-from simquaro.clock import SystemClock
+from synqaro_protocol.clock import SystemClock
 from simquaro.model import SimulatorModel
 from simquaro.session import HardwareSession, bounded
 
