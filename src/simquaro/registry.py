@@ -7,7 +7,7 @@ from synqaro_protocol.errors import ErrorDefinition
 from simquaro.faults import FaultController, Scenario
 from simquaro.model import SimulatorModel
 from simquaro.models.fictitious_receiver.config import ReceiverConfig
-from simquaro.models.fictitious_receiver.errors import ERROR_CATALOG
+from synqaro_protocol.profiles.fictitious_receiver import ERROR_CATALOG
 from simquaro.models.fictitious_receiver.faults import receiver_faults
 from simquaro.models.fictitious_receiver.model import FictitiousReceiverSimulator
 

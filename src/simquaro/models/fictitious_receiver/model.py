@@ -17,7 +17,7 @@ from simquaro.faults import FaultContext, FaultController
 from simquaro.model import ModelReply
 from synqaro_protocol.codec import MAX_REQUEST_ID, NumericToken, Request, Response, encode_response
 from .config import ReceiverConfig
-from .errors import render_error
+from synqaro_protocol.profiles.fictitious_receiver import render_error
 from .faults import receiver_faults
 from .procedures import Procedures
 from .validation import parse_frequency

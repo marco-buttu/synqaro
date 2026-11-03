@@ -7,7 +7,7 @@ import unittest
 
 from simquaro.models.fictitious_receiver.config import ReceiverConfig
 from synqaro_protocol.errors import ProtocolError
-from simquaro.models.fictitious_receiver.errors import ERROR_CATALOG, render_error
+from synqaro_protocol.profiles.fictitious_receiver import ERROR_CATALOG, render_error
 from simquaro.models.fictitious_receiver.validation import parse_frequency
 from synqaro_protocol.codec import (
     NumericToken, Request, Response, encode_response,

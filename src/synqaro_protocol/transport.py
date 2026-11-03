@@ -38,8 +38,10 @@ class TcpConnection:
                     await self.writer.drain()
         await bounded(write(), self.clock, deadline)
 
-    async def receive(self) -> bytes:
-        return await self.reader.read(4096)
+    async def receive(self, max_bytes=4096) -> bytes:
+        if type(max_bytes) is not int or not 1 <= max_bytes <= 4096:
+            raise ValueError("read size must be from 1 through 4096 bytes")
+        return await self.reader.read(max_bytes)
 
     async def shutdown_write(self):
         if self.writer.can_write_eof():

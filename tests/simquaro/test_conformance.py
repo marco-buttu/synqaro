@@ -172,7 +172,7 @@ class ConformanceTests(ScriptedClientCase):
         response = await client.request("status")
         await turns(100)
         self.assertEqual(response.request_id, 3)
-        self.assertEqual({e.kind for e in client.evidence},
+        self.assertEqual({e.kind for e in client.evidence if e.kind not in ("tx", "rx")},
                          {"uncorrelated", "id_rejection", "foreign", "duplicate"})
         self.assertEqual(self.connections, 1)
 
@@ -190,7 +190,9 @@ class ConformanceTests(ScriptedClientCase):
         self.assertEqual(a.code, "MALFORMED_RESPONSE")
         self.assertEqual(b.request_id, 4)
         self.assertEqual(self.connections, 1)
-        self.assertIn(b'value=[', client.evidence[-1].wire)
+        malformed = [e for e in client.evidence if e.kind == "malformed"]
+        self.assertEqual(len(malformed), 1)
+        self.assertIn(b'value=[', malformed[0].wire)
 
     async def test_unattributable_malformed_reply_preserves_original_deadline(self):
         client = await self.client()
@@ -222,7 +224,7 @@ class ConformanceTests(ScriptedClientCase):
         self.assertEqual(first.fields["code"], "FREQUENCY_READ_FAILED")
         self.assertEqual(second.fields["code"], "FUTURE_SENSOR_ERROR")
         self.assertEqual(second.fields["description"], "board detail")
-        known, unknown = client.evidence
+        known, unknown = [e for e in client.evidence if e.kind == "hardware_error"]
         self.assertIn("could not be read reliably", known.message)
         self.assertIn("Unrecognized hardware error code", unknown.message)
         self.assertEqual((known.request_id, known.verb, known.target), (3, "get", "frequency"))
