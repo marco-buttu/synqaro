@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "simquaro"
+version = "0.1.0"
+description = "Deterministic standalone hardware simulator for Synqaro development"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+web = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1"]
+browser-test = ["httpx>=0.27,<1", "playwright>=1.48,<2"]
+
+[project.scripts]
+simquaro = "simquaro.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["simquaro*", "synqaro_protocol*"]
+
+[tool.setuptools.package-data]
+"simquaro.web" = ["static/*.html", "static/*.js", "static/*.css"]

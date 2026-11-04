@@ -1506,6 +1506,12 @@ For each case, tests must distinguish injected physical state, firmware-reported
 
 This is an acceptance matrix for implementation, not evidence that tests have already run. Include normal paths, ascending/descending scans, exact rounding ties, all frame-size/deadline boundaries, and fragmented/reordered responses in the future executable suite. Deadline tests should use controllable timing where possible rather than relying exclusively on slow wall-clock sleeps. Expected code names and fields must be checked against this contract.
 
+The standalone Simquaro implementation now has a test-only conforming client and
+an [exact executable-test mapping](simquaro.md#executable-conformance-scope) for
+these rows. That guide identifies the implemented simulator/client evidence and
+the later Device-cache, alarm, reachability, and deployment-history boundaries.
+It does not change this wire contract or establish correctness of real hardware.
+
 ## Open Issues and Deferred Scope
 
 The following items are not resolved by this document. They must not be treated as guarantees already provided by the protocol. Some require completion of the prototype contract; others are separate capabilities to evaluate only when needed.
