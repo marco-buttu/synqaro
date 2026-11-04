@@ -123,6 +123,10 @@ socket/lock files manually.
 - For injected faults, detailed diagnostics, and JSON output, read the
   [operator guide](simquaro.md).
 
-The combined delivery also requires persistent external configuration and a
-browser GUI. They are not yet available at this implementation checkpoint; this
-guide will be extended with their actual launch/use commands before final handoff.
+Persistent startup settings can now be inspected with
+`.venv/bin/simquaro config show` and explicitly initialized with
+`.venv/bin/simquaro config init`. Saving settings alone does not change a running
+instance; `.venv/bin/simquaro config apply receiver-a` applies them through a
+foreground restart. See the operator guide before editing/applying configuration.
+The required browser GUI is still being implemented; its actual launch and
+hands-on walkthrough will be added before final handoff.

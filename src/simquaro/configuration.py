@@ -1,6 +1,7 @@
 """Versioned operator inventory and compare-and-swap atomic persistence."""
 
 from collections.abc import Mapping
+import asyncio
 from dataclasses import asdict, dataclass, fields
 from decimal import Decimal, InvalidOperation
 import fcntl
@@ -230,3 +231,59 @@ class ConfigStore:
                 os.unlink(temporary)
             if lock_fd is not None:
                 os.close(lock_fd)
+
+
+async def configuration_io(operation, *args, **kwargs):
+    """Keep filesystem work off-loop, but never abandon an in-flight write."""
+    task = asyncio.create_task(asyncio.to_thread(operation, *args, **kwargs))
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        await task
+        raise
+
+
+@dataclass(frozen=True)
+class ApplyResult:
+    outcome: dict
+    started: object | None
+
+
+class ConfigurationService:
+    def __init__(self, store, runtime):
+        self.store, self.runtime = store, runtime
+
+    @staticmethod
+    def target(snapshot, name):
+        if name not in snapshot.entries:
+            raise ConfigurationError("UNKNOWN_TARGET", "Select a configured instance")
+        return snapshot.entries[name]
+
+    async def inspect(self, name):
+        snapshot = await configuration_io(self.store.load)
+        entry = self.target(snapshot, name)
+        result = {"saved": entry_record(entry), "revision": snapshot.revision,
+                  "source": snapshot.source, "active": None, "pending": None}
+        if entry.kind == "hardware":
+            return {**result, "state": "not_applicable"}
+        state = await self.runtime.inspect(entry.config)
+        if state["ok"] and state["outcome"] == "running":
+            active = state["startup_config"]
+            return {**result, "state": "running", "active": active,
+                    "pending": active != instance_record(entry.config), "runtime": state}
+        return {**result, "state": "stopped" if state["ok"] else "unknown", "runtime": state}
+
+    async def apply(self, name, *, expected_revision):
+        snapshot = await configuration_io(self.store.load)
+        if snapshot.revision != expected_revision:
+            raise ConfigurationError("CONFIG_CONFLICT", "Saved settings changed; reload before applying")
+        entry = self.target(snapshot, name)
+        if entry.kind != "simulator":
+            raise ConfigurationError("FORBIDDEN_TARGET_KIND", "Physical hardware has no simulator startup settings to apply")
+        started = await self.runtime.restart(entry.config)
+        # Transfer ownership immediately: no fallible/cancellable follow-up I/O
+        # between child creation and returning its handle. A later inspect()
+        # compares the latest saved snapshot with this trusted startup evidence.
+        outcome = {**started.outcome, "requested_revision": snapshot.revision,
+                   "active_evidence": started.outcome}
+        return ApplyResult(outcome, started if started.child is not None else None)

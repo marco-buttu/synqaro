@@ -17,4 +17,5 @@ def builtin_inventory() -> dict[str, InstanceConfig]:
 
 
 def load_inventory() -> dict[str, InstanceConfig]:
-    return builtin_inventory()
+    from simquaro.configuration import ConfigStore
+    return {name: entry.config for name, entry in ConfigStore().load().entries.items()}

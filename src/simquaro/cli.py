@@ -13,6 +13,8 @@ import signal
 import sys
 
 from simquaro.config import InstanceConfig, instance_record, validate_inventory
+from simquaro.configuration import (ConfigStore, ConfigurationError, ConfigurationService,
+                                     entry_record)
 from simquaro.control import control_request
 from synqaro_protocol.errors import ERROR_CATALOG
 from simquaro.faults import FaultRule
@@ -33,6 +35,7 @@ def _parser():
     parser = _Parser(prog="simquaro", description="Run configured hardware simulators in the foreground.",
                      allow_abbrev=False)
     parser.add_argument("--json", action="store_true", help="emit version-1 JSON records; foreground commands emit JSON Lines")
+    parser.add_argument("--config", dest="config_path", type=Path, help="select a persistent inventory JSON file")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("list", help="list the explicit configured inventory")
     console = commands.add_parser("console", help="exchange literal diagnostic text/bytes with a target")
@@ -41,6 +44,14 @@ def _parser():
     checks = commands.add_parser("test", help="run shared hardware checks (read-only by default)")
     checks.add_argument("instance", metavar="INSTANCE")
     checks.add_argument("--allow-changes", action="store_true", help="allow setting changes, procedures and reboot")
+    config = commands.add_parser("config", help="initialize, inspect, validate or apply saved settings")
+    actions = config.add_subparsers(dest="config_action", required=True)
+    actions.add_parser("init", help="create defaults only if the file does not exist")
+    show = actions.add_parser("show", help="show saved settings, source and revision")
+    show.add_argument("instance", nargs="?")
+    actions.add_parser("validate", help="validate the selected saved inventory")
+    apply = actions.add_parser("apply", help="apply saved settings with a coordinated foreground restart")
+    apply.add_argument("instance")
     for action in ("status", "start", "stop", "restart"):
         command = commands.add_parser(action, help=f"{action} one configured instance or all")
         command.add_argument("instance", metavar="INSTANCE|all")
@@ -71,8 +82,25 @@ def _error(code, message, actions):
 class _Output:
     def __init__(self, structured):
         self.structured = structured
+        self.config_path = None
+
+    def command(self, *arguments):
+        prefix = ["simquaro"]
+        if self.config_path is not None:
+            prefix += ["--config", str(self.config_path)]
+        return [*prefix, *arguments]
 
     def emit(self, event, *, instance=None, result=None, error=None):
+        if error is not None and self.config_path is not None:
+            actions = []
+            for action in error.get("actions", []):
+                command = shlex.split(action) if isinstance(action, str) and action.startswith("simquaro ") else action
+                if isinstance(command, list) and command[:1] == ["simquaro"] and "--config" not in command:
+                    command = self.command(*command[1:])
+                actions.append(command)
+            error = {**error, "actions": actions}
+        if isinstance(result, dict) and result.get("reopen", "").startswith("simquaro "):
+            result = {**result, "reopen": shlex.join(self.command(*shlex.split(result["reopen"])[1:]))}
         record = {"version": 1, "event": event, "ok": error is None}
         if instance is not None:
             record["instance"] = instance
@@ -93,6 +121,10 @@ class _Output:
                   error=error)
 
     def _human(self, event, instance, result):
+        if event.startswith("config."):
+            print(f"{result['path']} ({result['source']}); revision={result['revision']}", flush=True)
+            print(json.dumps(result["instances"], indent=2, allow_nan=False), flush=True)
+            return
         if event == "test.case":
             print(f"{result['state'].upper():7} {result['name']}"
                   + (f": {result['reason']}" if result['reason'] else ""), flush=True)
@@ -122,7 +154,8 @@ class _Output:
                          f"; health={general['health']}; activity={general['activity']}")
             print(text, flush=True)
             if result["outcome"] == "already_running":
-                print(f"  simquaro status {instance}\n  simquaro restart {instance}", flush=True)
+                print("  " + shlex.join(self.command("status", instance)) + "\n  "
+                      + shlex.join(self.command("restart", instance)), flush=True)
             if status:
                 print("  injections: " + json.dumps(status["faults"], sort_keys=True), flush=True)
                 codes = list(general.get("fault_codes", []))
@@ -174,7 +207,7 @@ def _fault_arguments(args, definition):
     return {"name": args.name}
 
 
-async def _foreground(runtime, configs, action, output):
+async def _foreground(runtime, configs, action, output, *, starter=None):
     """Own signals once, cancel once, and await all owned cleanup before exit."""
     started, observers = [], {}
     interrupted = False
@@ -194,7 +227,8 @@ async def _foreground(runtime, configs, action, output):
         nonlocal failure
         try:
             for config in configs:
-                result = await (runtime.start(config) if action == "start" else runtime.restart(config))
+                result = await (starter(config) if starter is not None else
+                                runtime.start(config) if action == "start" else runtime.restart(config))
                 started.append(result)
                 failure |= not result.outcome["ok"]
                 output.outcome(action, result.outcome)
@@ -292,6 +326,13 @@ async def _run(args, configs, runtime_root, output, fault_arguments):
                     result={**report.as_dict(), "read_only": not args.allow_changes})
         return report.exit_code
     runtime = Runtime(runtime_root)
+    if args.command == "config" and args.config_action == "apply":
+        from simquaro.runtime import StartResult
+        service = ConfigurationService(args._store, runtime)
+        async def apply(config):
+            applied = await service.apply(config.name, expected_revision=args._revision)
+            return StartResult(applied.outcome, applied.started.child if applied.started is not None else None)
+        return await _foreground(runtime, configs, "apply", output, starter=apply)
     if args.command in ("start", "restart"):
         return await _foreground(runtime, configs, args.command, output)
     if args.command in ("status", "stop"):
@@ -339,28 +380,61 @@ def main(argv: Sequence[str] | None = None, *, inventory: Mapping[str, InstanceC
     arguments = list(sys.argv[1:] if argv is None else argv)
     output = _Output("--json" in arguments)
     args = None
+    configs = {}
     try:
         args = _parser().parse_args(arguments)
+        if inventory is not None and args.config_path is not None:
+            raise _Usage("Do not combine an injected inventory with --config")
         try:
             if inventory is None:
-                # Keep help usable even when the editable loader cannot import.
-                from simquaro.instances import load_inventory
-                inventory = load_inventory()
+                store = ConfigStore(args.config_path)
+                output.config_path = store.path if args.config_path is not None else None
+                snapshot = store.initialize() if args.command == "config" and args.config_action == "init" else store.load()
+                inventory = {name: entry.config for name, entry in snapshot.entries.items()}
+                kinds = {name: entry.kind for name, entry in snapshot.entries.items()}
+                args._store, args._revision = store, snapshot.revision
+            else:
+                if args.command == "config": raise _Usage("Configuration commands require a file-backed inventory")
+                kinds = {name: "simulator" for name in inventory}
             configs = validate_inventory(inventory)
+        except ConfigurationError as error:
+            output.emit("error", error=_error(error.code, str(error),
+                [["simquaro", "config", "validate"], ["simquaro", "--help"]]))
+            return 1
         except (ValueError, TypeError, OSError, SyntaxError, ImportError) as error:
+            if isinstance(error, _Usage): raise
             output.emit("error", error=_error("CONFIGURATION_ERROR", str(error),
-                        ["Correct startup configuration in src/simquaro/instances.py (or the installed simquaro/instances.py), then rerun the command.",
+                        ["Correct the supplied programmatic inventory (for example src/simquaro/instances.py), then rerun the command.",
                          ["simquaro", "list"], ["simquaro", "--help"]]))
             return 1
+        if args.command == "config" and args.config_action != "apply":
+            selected_entries = snapshot.entries
+            if args.config_action == "show" and args.instance is not None:
+                if args.instance not in selected_entries: raise _Usage("Select a configured instance")
+                selected_entries = {args.instance: selected_entries[args.instance]}
+            output.emit("config." + args.config_action,
+                        result={"path": str(snapshot.path), "revision": snapshot.revision,
+                                "source": snapshot.source,
+                                "instances": [entry_record(entry) for entry in selected_entries.values()]})
+            return 0
         if args.command == "list":
-            output.emit("list", result={"instances": [instance_record(config) for config in configs.values()]})
+            output.emit("list", result={"instances": [{**instance_record(config), "kind": kinds[config.name]}
+                                                       for config in configs.values()]})
             return 0
         if args.instance == "all" and args.command in ("start", "stop", "restart", "status"):
-            selected = list(configs.values())
+            selected = [config for config in configs.values() if kinds[config.name] == "simulator"]
+            skipped = [name for name in configs if kinds[name] != "simulator"]
+            if skipped:
+                output.emit("selection.skipped", result={"targets": skipped, "reason": "Physical targets have no local simulator process"})
+            if not selected:
+                output.emit(args.command, result={"instances": [], "message": "No simulator targets selected"})
+                return 0
         elif args.instance in configs:
             selected = [configs[args.instance]]
         else:
             raise _Usage("unknown instance " + repr(args.instance) + "; run simquaro list and select a configured name")
+        if kinds[selected[0].name] == "hardware" and args.command not in ("console", "test"):
+            raise ConfigurationError("FORBIDDEN_TARGET_KIND", "Use console or test for physical hardware; simulator administration is unavailable")
         definition = get_model(selected[0].model) if args.command == "fault" else None
         fault_arguments = _fault_arguments(args, definition) if args.command == "fault" else None
         if args.command == "fault" and args.fault_action == "list":
@@ -377,6 +451,9 @@ def main(argv: Sequence[str] | None = None, *, inventory: Mapping[str, InstanceC
             actions.insert(0, ["simquaro", "fault", "list", args.instance])
         output.emit("usage", error=_error("INVALID_USAGE", str(error), actions))
         return 2
+    except ConfigurationError as error:
+        output.emit("error", error=_error(error.code, str(error), [["simquaro", "config", "show"]]))
+        return 1
     except (ValueError, OSError) as error:
         output.emit("error", error=_error("RUNTIME_FAILURE", str(error),
                     [["simquaro", "status", getattr(args, "instance", "all")], ["simquaro", "--help"]]))

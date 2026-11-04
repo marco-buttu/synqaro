@@ -112,8 +112,8 @@ Simulator administration remains a separate path, not extra hardware commands:
 Fault injection and simulator startup editing are simulator-only functions, not
 features of physical hardware. The GUI should offer only supported settings and
 distinguish saved configuration from the configuration currently in use. The
-configuration storage format and editing operations still need a concrete design;
-no configuration editor or general hot reload is available today.
+configuration uses the versioned JSON file described below. Save and Apply are
+separate operations; general hot reload is not available.
 
 ### Shared validation workflow
 
@@ -183,20 +183,47 @@ Diagnostic submissions are locally capped at 64 KiB, independently of firmware's
 
 ## Inventory and startup configuration
 
-The explicit Python loader is
-[`src/simquaro/instances.py`](../src/simquaro/instances.py), function
-`load_inventory()`. It returns frozen
-[`InstanceConfig`](../src/simquaro/config.py) records. Each record selects a model
-and holds that model's validated startup settings in `settings`. For the
-fictitious receiver, these are
-[`ReceiverConfig`](../src/simquaro/models/fictitious_receiver/config.py) objects.
-Edit that mapping to add named instances or change their endpoint, hardware
-identity, supported firmware profile, or initial settings. For an installed
-copy, locate the actual loader with:
+The operator inventory is version-1 JSON. By default it is stored in
+`$XDG_CONFIG_HOME/simquaro/instances.json` when XDG_CONFIG_HOME is absolute,
+otherwise `~/.config/simquaro/instances.json`. Global `--config PATH` selects
+another file. Inspect its actual path and values with:
 
 ```sh
-python -c 'import simquaro.instances; print(simquaro.instances.__file__)'
+simquaro config show
+simquaro config init
+simquaro config validate
+simquaro --config /absolute/path/instances.json config show receiver-a
 ```
+
+A missing implicit file uses labeled built-in defaults without writing anything.
+`config init` explicitly saves them and never overwrites an existing file. A
+missing explicit path or existing invalid file is an error, never a fallback.
+JSON contains `version: 1` and an `instances` array; records use name/model,
+host/port, `kind` (`simulator` or `hardware`), and the registered model's settings
+key (`receiver` for this example). Missing settings use validated model defaults.
+Hardware targets require an explicit expected hardware_id and cannot receive
+simulator lifecycle/fault/apply actions. `start all` skips them visibly.
+
+Save does not alter a running simulator. Apply saved settings explicitly:
+
+```sh
+simquaro config apply receiver-a
+```
+
+This follows start/restart's foreground policy and restarts only this simulator.
+It may interrupt procedures/connections and discard runtime fault schedules.
+Failure does not silently restore the old configuration: inspect the reported
+active/stopped/unknown state, correct the saved values, and retry deliberately.
+Existing connections stay pinned after a save; new console/check connections
+use saved endpoint/identity settings, which may not yet be serving until Apply.
+
+Atomic saves use a revision to reject stale edits from another tab and reuse
+crash-left lock files automatically; never remove locks manually. File size is
+capped at 1 MiB; unknown/duplicate fields, nonfinite numbers, unsafe paths and
+invalid model values are rejected. Startup frequency is not silently rounded.
+[`InstanceConfig`](../src/simquaro/config.py) and model-specific validated types
+remain available for programmatic construction. The explicit model registry,
+not this JSON file, defines available implementations.
 
 Names are flat: `[a-z][a-z0-9_-]{0,47}`. `all` is reserved. Each inventory entry
 needs a unique host/port and a fixed port from 1 through 65535. Adding another
@@ -231,9 +258,12 @@ simulated apparatus does**. Models do not import the CLI, inventory, runtime, or
 registry. The registry is where the application explicitly selects a model.
 
 ```text
+src/synqaro_protocol/
+  codec.py, errors.py      Shared ASCII codec and diagnostic rendering
+  transport.py, clock.py   Shared TCP transport and bounded deadlines
+  client.py               Managed production client, no simulator dependency
+  profiles/               Hardware-family contract validation and error catalogs
 src/simquaro/
-  protocol.py             ASCII message parsing and encoding
-  errors.py               Common errors and bounded diagnostic rendering
   faults.py               Finite fault scheduling and TCP delivery effects
   model.py                Small model interface and reply type
   config.py               Instance identity, endpoint, and record validation
@@ -246,7 +276,7 @@ src/simquaro/
     fictitious_receiver/
       config.py           Supported receiver settings and their validation
       validation.py       Exact frequency range/grid handling
-      errors.py, faults.py Receiver diagnostic and physical-fault catalogs
+      faults.py           Receiver physical-fault catalog
       model.py            Receiver state and request behavior
       procedures.py       Calibration, scan, and cancellation behavior
 ```

@@ -337,46 +337,57 @@ class Runtime:
         try:
             name_checked(name)
             async with self._coordination(name) as directory:
-                lock_fd = directory.lock(name + ".lock")
-                target = None
-                try:
-                    _, metadata, target = self._state(directory, name, lock_fd)
-                    if metadata is None:
-                        return _outcome(name, "already_stopped", process="stopped", escalated=False)
-                    record, meta_inode = metadata
-                    if expected is not None and record["run_token"] != expected:
-                        return _outcome(name, "no_longer_owned", process="unverified", escalated=False)
-                    running = not target.exited
-                    # Cancellation must not release coordination halfway through
-                    # escalation or permit a replacement during confirmation.
-                    async def finish():
-                        escalated = await target.terminate() if running else False
-                        if not try_lock(lock_fd):
-                            raise OwnershipError("STOP_UNCONFIRMED", "Process exited but its lifetime lock remains held; inspect inherited process ownership and retry stop.")
-                        directory.cleanup(record, meta_inode)
-                        child = self._children.get(record["run_token"])
-                        if child is not None:
-                            await child.wait()
-                        return _outcome(name, "stopped" if running else "already_stopped",
-                                        process="stopped", escalated=escalated)
-                    task = asyncio.create_task(finish())
-                    try:
-                        return await asyncio.shield(task)
-                    except asyncio.CancelledError:
-                        await task
-                        raise
-                finally:
-                    if target:
-                        target.close()
-                    os.close(lock_fd)
+                return await self._stop_locked(directory, name, expected=expected)
         except (OSError, ValueError, TimeoutError) as error:
             return _failure(name, error)
 
+    async def _stop_locked(self, directory, name, *, expected=None):
+        lock_fd = directory.lock(name + ".lock")
+        target = None
+        try:
+            _, metadata, target = self._state(directory, name, lock_fd)
+            if metadata is None:
+                return _outcome(name, "already_stopped", process="stopped", escalated=False)
+            record, meta_inode = metadata
+            if expected is not None and record["run_token"] != expected:
+                return _outcome(name, "no_longer_owned", process="unverified", escalated=False)
+            running = not target.exited
+            # Cancellation must not release coordination halfway through
+            # escalation or permit a replacement during confirmation.
+            async def finish():
+                escalated = await target.terminate() if running else False
+                if not try_lock(lock_fd):
+                    raise OwnershipError("STOP_UNCONFIRMED", "Process exited but its lifetime lock remains held; inspect inherited process ownership and retry stop.")
+                directory.cleanup(record, meta_inode)
+                child = self._children.get(record["run_token"])
+                if child is not None:
+                    await child.wait()
+                return _outcome(name, "stopped" if running else "already_stopped",
+                                process="stopped", escalated=escalated)
+            task = asyncio.create_task(finish())
+            try:
+                return await asyncio.shield(task)
+            except asyncio.CancelledError:
+                await task
+                raise
+        finally:
+            if target:
+                target.close()
+            os.close(lock_fd)
+
     async def restart(self, config, *, scenario=Scenario()) -> StartResult:
-        result = await self.stop(config.name)
-        if not result["ok"]:
-            return StartResult(result)
-        return await self.start(config, scenario=scenario)
+        try:
+            # Validate before stopping; one lifecycle lock covers the whole restart.
+            token = secrets.token_hex(16)
+            bootstrap = encode_bootstrap(config, scenario, token)
+            async with self._coordination(config.name) as directory:
+                stopped = await self._stop_locked(directory, config.name)
+                if not stopped["ok"]:
+                    return StartResult(stopped)
+                deadline = asyncio.get_running_loop().time() + 5
+                return await self._start_locked(directory, config, token, bootstrap, deadline)
+        except (OSError, ValueError, TimeoutError) as error:
+            return StartResult(_failure(config.name, error))
 
     async def supervise(self, started: Sequence[StartResult]) -> int:
         """Wait for owned children; cancellation cleans them before propagating.

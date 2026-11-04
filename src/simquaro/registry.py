@@ -22,12 +22,16 @@ class ModelDefinition:
     config_key: str
     client_factory: Callable | None = None
     checks: tuple = ()
+    editable_settings: tuple[str, ...] = ()
 
 
 MODELS = {
     "fictitious_receiver": ModelDefinition(
         ReceiverConfig, FictitiousReceiverSimulator, receiver_faults,
-        ERROR_CATALOG, "receiver", client_factory, CHECKS),
+        ERROR_CATALOG, "receiver", client_factory, CHECKS,
+        ("hardware_id", "firmware_version", "firmware_build", "initial_frequency",
+         "tuning_duration_ms", "stop_duration_ms", "calibrate_preparation_ms",
+         "calibrate_measurement_ms", "calibrate_finalization_ms")),
 }
 
 
