@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Simquaro — Hardware workbench</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="masthead"><div><p class="eyebrow">SYNQARO / HARDWARE WORKBENCH</p><h1>Simquaro</h1></div><span class="badge">Local workstation only</span></header>
+  <main>
+    <section class="target-bar" aria-label="Selected target">
+      <div><label for="target">Target</label><select id="target"></select></div>
+      <div><strong id="target-description">Loading configuration…</strong><p id="target-endpoint"></p></div>
+      <button id="reload">Reload inventory</button>
+    </section>
+    <div id="notice" role="alert" hidden></div>
+    <nav aria-label="Workbench sections"><a href="#control">01 Control</a><a href="#console">02 Console</a><a href="#tests">03 Tests</a><a href="#configuration">04 Configuration</a></nav>
+    <div class="workspace">
+      <section id="control" class="panel">
+        <p class="eyebrow">01 / OPERATE</p><h2>Control</h2>
+        <div id="simulator-controls">
+          <h3>Simulator process</h3><p>Start does not apply saved changes to an existing process. Restart loses its current state.</p>
+          <div class="buttons"><button id="start">Start simulator</button><button id="stop">Stop simulator</button><button id="restart" class="warning">Restart simulator</button><button id="refresh-admin">Refresh process state</button></div>
+          <p id="runtime-state" class="status">Not inspected</p>
+        </div>
+        <div id="receiver-controls">
+          <h3>Receiver operations <span class="muted">via TCP</span></h3>
+          <p>Connect in Guided mode first. No requests are sent just by opening this page.</p>
+          <label for="frequency">Frequency (GHz)<input id="frequency" type="text" inputmode="decimal" value="5.1234565" maxlength="64"></label>
+          <div class="buttons"><button id="set-frequency">Set frequency</button><button id="get-frequency">Read frequency</button><button id="general-status">Read receiver status</button></div>
+          <div class="buttons"><button id="calibrate">Run calibrate</button><button id="reboot" class="warning">Reboot hardware</button></div>
+          <details><summary>Scan settings</summary><div class="fields">
+            <label for="scan-start">Scan start (GHz)<input id="scan-start" value="5" maxlength="64"></label>
+            <label for="scan-stop">Scan stop (GHz)<input id="scan-stop" value="5.2" maxlength="64"></label>
+            <label for="scan-dwell">Dwell per point (ms)<input id="scan-dwell" value="1000" maxlength="64"></label>
+          </div><p>Ten fixed points; no scientific-data association is guaranteed by this console.</p><button id="scan">Run scan</button></details>
+          <div><label for="procedure">Procedure</label><select id="procedure"><option value="calibrate">calibrate</option><option value="scan">scan</option></select></div>
+          <div class="buttons"><button id="procedure-status">Read procedure status</button><button id="cancel">Cancel procedure</button></div>
+          <label class="check"><input id="monitor" type="checkbox">Monitor procedure every 500 ms</label>
+          <p class="hint">Monitoring sends real status requests and may consume scheduled faults. It is off by default.</p>
+        </div>
+        <h3>Last parsed response</h3><pre id="response" tabindex="0">No request sent.</pre>
+        <details id="fault-controls"><summary>Simulator fault injection</summary>
+          <button id="refresh-faults">Refresh faults</button>
+          <label for="fault">Fault</label><select id="fault"></select><p id="fault-description"></p>
+          <div class="buttons"><button id="activate-fault">Activate fault</button><button id="clear-fault">Clear fault</button></div>
+          <label for="fault-when">Trigger event</label><select id="fault-when"></select>
+          <div class="fields"><label for="fault-times">Occurrences<input id="fault-times" value="1" inputmode="numeric"></label><label for="fault-delay">Delay (ms, delay_response only)<input id="fault-delay" value="3000" inputmode="numeric"></label></div>
+          <button id="schedule-fault">Schedule fault</button>
+          <label for="rule-id">Pending rule ID<input id="rule-id" maxlength="64"></label><button id="cancel-rule">Cancel scheduled rule</button>
+          <pre id="fault-state" tabindex="0">Not inspected. Refresh explicitly.</pre>
+        </details>
+      </section>
+      <section id="console" class="panel">
+        <p class="eyebrow">02 / INSPECT THE WIRE</p><h2>Console</h2>
+        <label for="mode">Console mode</label><select id="mode"><option value="managed">Guided — validated client</option><option value="line">Literal line — append LF</option><option value="raw">Raw bytes — explicit escapes, no LF</option></select>
+        <p id="mode-help">Connect sends configuration/status probes; IDs and recovery are handled by the shared client.</p>
+        <div class="buttons"><button id="connect" class="primary">Connect</button><button id="disconnect">Disconnect</button></div>
+        <p id="connection-state" class="status" aria-live="polite">disconnected</p><p id="session-revision" class="hint"></p>
+        <div id="literal-controls" hidden><label for="literal">Literal request</label><textarea id="literal" rows="4" spellcheck="false" maxlength="262144">#status &lt;id=1&gt;\n</textarea>
+          <p>Raw escapes: \n, \r, \t, \xNN, \\. Line mode sends text literally and appends LF. Invalid protocol messages are allowed.</p>
+          <button id="send-literal">Send literal request</button>
+        </div>
+        <div class="section-heading"><h3>Actual TX / RX evidence</h3><button id="clear-log">Clear display</button></div>
+        <p class="hint">Local receipt times are not firmware measurement times. Event polling only reads server memory.</p>
+        <pre id="wire-log" class="wire" tabindex="0" aria-label="Wire evidence">No TCP connection.</pre>
+      </section>
+      <section id="tests" class="panel">
+        <p class="eyebrow">03 / VERIFY</p><h2>Tests</h2>
+        <p>The same shared checks run against a simulator or compatible hardware. Disconnect all GUI sessions for this target first; isolate other clients yourself.</p>
+        <label class="check"><input id="allow-changes" type="checkbox">Allow changes for this run (frequency, procedures, reboot)</label>
+        <div class="buttons"><button id="run-tests">Run checks</button><button id="recent-jobs">Inspect recent jobs</button></div>
+        <p id="job-state" class="status" aria-live="polite">No job submitted</p>
+        <pre id="test-report" tabindex="0">Read-only by default. No tests have run.</pre>
+      </section>
+      <section id="configuration" class="panel">
+        <p class="eyebrow">04 / CONFIGURE</p><h2>Configuration</h2>
+        <p id="config-path" class="hint"></p><p id="config-source"></p>
+        <p id="config-state" class="status">Active settings unknown</p>
+        <p>Editor draft → Save to file → Apply to this simulator. Saving alone never restarts it. Active startup settings are not live property values.</p>
+        <form id="config-form"><div class="fields" id="config-fields"></div>
+          <div class="buttons"><button id="save-config" type="submit">Save configuration</button><button id="reload-config" type="button">Reload saved configuration</button><button id="apply-config" type="button" class="warning">Apply saved settings</button></div>
+        </form>
+        <details><summary>Saved startup settings</summary><pre id="saved-config" tabindex="0"></pre></details>
+        <details><summary>Active startup settings (verified local process)</summary><pre id="active-config" tabindex="0">Unknown</pre></details>
+      </section>
+    </div>
+    <footer>Keep the server terminal open. Closing this page closes no simulator; unused TCP sessions expire after 120 seconds. Hardware procedures are never automatically cancelled.</footer>
+  </main>
+</body>
+</html>

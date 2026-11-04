@@ -40,7 +40,7 @@ class JobManager:
         record = self._records[jid]
         try:
             result = await coroutine
-            if len(json.dumps(result, allow_nan=False).encode()) > 900000:
+            if len(json.dumps({**record, "result": result}, allow_nan=False).encode()) > 1048000:
                 raise ServiceError("REPORT_LIMIT", "Result exceeded 1 MiB; inspect the target before retrying")
             record.update(state="failed" if isinstance(result, dict) and
                           (result.get("ok") is False or result.get("exit_code", 0) != 0) else "succeeded", result=result)

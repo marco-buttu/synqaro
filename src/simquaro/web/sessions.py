@@ -51,6 +51,7 @@ class _Session:
     reader: object = None
     notice: object = None
     closer: object = None
+    opener: object = None
     events: deque = field(default_factory=deque)
     sizes: deque = field(default_factory=deque)
     total_bytes: int = 0
@@ -102,26 +103,31 @@ class SessionManager:
         self._sessions[session.id] = session  # Reserve before any connection await.
         if self._sweeper is None: self._sweeper = asyncio.create_task(self._sweep())
         try:
-            if mode == "managed":
-                definition = get_model(entry.config.model)
-                if definition.client_factory is None: raise ValueError("Model has no managed client profile")
-                session.client = definition.client_factory(entry.config.host, entry.config.port, entry.config.settings)
-                session.client.clock = self.clock
-                def observe(e):
-                    self._event(session, e.kind, data=render_bytes(e.wire), message=e.message,
-                                request_id=e.request_id, verb=e.verb, hardware_id=e.hardware_id,
-                                observed_at=e.received_at, time_provenance=e.time_provenance)
-                session.client.observe = observe
-                await session.client.connect()
-            else:
-                session.connection = await TcpConnection.open(entry.config.host, entry.config.port, clock=self.clock)
-                session.reader = asyncio.create_task(self._read(session))
+            session.opener = asyncio.create_task(self._open(session))
+            await session.opener
             session.state = "connected"
             self._event(session, "connected", mode=mode, host=entry.config.host, port=entry.config.port)
             return self.events(session.id, 0)
         except BaseException:
-            await self.disconnect(session.id)
+            if session.id in self._sessions: await self.disconnect(session.id)
             raise
+
+    async def _open(self, session):
+        config = session.config
+        if session.mode == "managed":
+            definition = get_model(config.model)
+            if definition.client_factory is None: raise ValueError("Model has no managed client profile")
+            session.client = definition.client_factory(config.host, config.port, config.settings)
+            session.client.clock = self.clock
+            def observe(e):
+                self._event(session, e.kind, data=render_bytes(e.wire), message=e.message,
+                            request_id=e.request_id, verb=e.verb, hardware_id=e.hardware_id,
+                            observed_at=e.received_at, time_provenance=e.time_provenance)
+            session.client.observe = observe
+            await session.client.connect()
+        else:
+            session.connection = await TcpConnection.open(config.host, config.port, clock=self.clock)
+            session.reader = asyncio.create_task(self._read(session))
 
     async def _read(self, session):
         try:
@@ -209,7 +215,7 @@ class SessionManager:
     async def _disconnect(self, session):
         sid = session.id
         session.state = "closed"
-        tasks = [t for t in (session.reader, session.notice) if t is not None]
+        tasks = [t for t in (session.opener, session.reader, session.notice) if t is not None]
         for task in tasks: task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         if session.client is not None: await session.client.close()

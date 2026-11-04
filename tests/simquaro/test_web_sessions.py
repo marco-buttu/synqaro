@@ -97,6 +97,31 @@ class SessionTests(ScriptedClientCase):
         self.assertIn("observation", [e["kind"] for e in history["events"]])
         self.assertEqual(self.frames, [])
 
+    async def test_disconnect_during_connect_joins_opener_without_late_connection_leak(self):
+        from unittest.mock import patch
+        from synqaro_protocol.transport import TcpConnection
+        opened, release = asyncio.Event(), asyncio.Event()
+        original = TcpConnection.open
+        async def delayed(*args, **kwargs):
+            connection = await original(*args, **kwargs)
+            opened.set()
+            try:
+                await release.wait()
+                return connection
+            except BaseException:
+                await connection.close()
+                raise
+        with patch.object(TcpConnection, "open", new=delayed):
+            connecting = asyncio.create_task(self.manager.connect("receiver-a", "raw"))
+            self.addCleanup(release.set)
+            await asyncio.wait_for(opened.wait(), 2)
+            sid = next(iter(self.manager._sessions))
+            await self.manager.disconnect(sid)
+            release.set()
+            await asyncio.gather(connecting, return_exceptions=True)
+        await turns(40)
+        self.assertTrue(all(writer.is_closing() for writer in self.writers), "Late connection remained open after Disconnect")
+
 
 class JobTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -133,6 +158,17 @@ class JobTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(caught.exception.code, "JOB_LIMIT")
         await self.jobs.close()
         self.assertEqual(self.jobs.get(first)["state"], "interrupted")
+
+    async def test_combined_progress_and_final_report_remain_within_one_mib(self):
+        import json
+        async def operation():
+            for _ in range(32): self.jobs.progress(jid, {"message":"x" * 16000})
+            return {"large":"x" * 800000}
+        jid = self.jobs.start("tests", "receiver-a", operation())
+        await turns(20)
+        record = self.jobs.get(jid)
+        self.assertLessEqual(len(json.dumps(record).encode()), 1048576)
+        self.assertEqual(record["state"], "failed")
 
     async def test_shutdown_stops_only_server_created_children(self):
         import socket
