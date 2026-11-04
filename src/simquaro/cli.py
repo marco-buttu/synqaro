@@ -38,6 +38,9 @@ def _parser():
     parser.add_argument("--config", dest="config_path", type=Path, help="select a persistent inventory JSON file")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("list", help="list the explicit configured inventory")
+    gui = commands.add_parser("gui", help="open the local browser interface (requires web extra)")
+    gui.add_argument("--port", type=int, default=8765, help="local HTTP port (default: 8765)")
+    gui.add_argument("--no-browser", action="store_true", help="print the URL without opening a browser")
     console = commands.add_parser("console", help="exchange literal diagnostic text/bytes with a target")
     console.add_argument("instance", metavar="INSTANCE")
     console.add_argument("--raw", action="store_true", help="decode escapes; do not append LF")
@@ -121,6 +124,9 @@ class _Output:
                   error=error)
 
     def _human(self, event, instance, result):
+        if event.startswith("gui."):
+            print(result["url"] + "\n" + result.get("message", ""), flush=True)
+            return
         if event.startswith("config."):
             print(f"{result['path']} ({result['source']}); revision={result['revision']}", flush=True)
             print(json.dumps(result["instances"], indent=2, allow_nan=False), flush=True)
@@ -383,6 +389,8 @@ def main(argv: Sequence[str] | None = None, *, inventory: Mapping[str, InstanceC
     configs = {}
     try:
         args = _parser().parse_args(arguments)
+        if args.command == "gui" and not 1 <= args.port <= 65535:
+            raise _Usage("GUI port must be an integer from 1 to 65535")
         if inventory is not None and args.config_path is not None:
             raise _Usage("Do not combine an injected inventory with --config")
         try:
@@ -394,7 +402,7 @@ def main(argv: Sequence[str] | None = None, *, inventory: Mapping[str, InstanceC
                 kinds = {name: entry.kind for name, entry in snapshot.entries.items()}
                 args._store, args._revision = store, snapshot.revision
             else:
-                if args.command == "config": raise _Usage("Configuration commands require a file-backed inventory")
+                if args.command in ("config", "gui"): raise _Usage("Configuration/GUI commands require a file-backed inventory")
                 kinds = {name: "simulator" for name in inventory}
             configs = validate_inventory(inventory)
         except ConfigurationError as error:
@@ -407,6 +415,10 @@ def main(argv: Sequence[str] | None = None, *, inventory: Mapping[str, InstanceC
                         ["Correct the supplied programmatic inventory (for example src/simquaro/instances.py), then rerun the command.",
                          ["simquaro", "list"], ["simquaro", "--help"]]))
             return 1
+        if args.command == "gui":
+            from simquaro.web.launch import launch
+            return launch(store, port=args.port, no_browser=args.no_browser,
+                          runtime_root=runtime_root, emit=output.emit)
         if args.command == "config" and args.config_action != "apply":
             selected_entries = snapshot.entries
             if args.config_action == "show" and args.instance is not None:
