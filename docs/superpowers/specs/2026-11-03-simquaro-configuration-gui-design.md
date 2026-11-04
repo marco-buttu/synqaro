@@ -1,7 +1,6 @@
 # Persistent configuration and mandatory local GUI
 
-**Status:** proposed technical design, awaiting user approval; no product code
-has been implemented by writing this document. Completes the previously outlined
+**Status:** technical design approved by the user on 2026-11-03. Completes the previously outlined
 configuration/GUI milestones of the combined delivery.
 
 **Related design:** [shared client and console](2026-11-03-protocol-client-console-design.md).

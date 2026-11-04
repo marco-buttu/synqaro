@@ -2,10 +2,10 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** draft for user review; do not execute until approved. Tasks 1–5 detail
+**Status:** approved by the user on 2026-11-03. Tasks 1–5 detail
 the client/console component. The configuration/GUI milestones are now detailed
 as Tasks 6–11 in the [companion plan](2026-11-03-simquaro-configuration-gui.md),
-also awaiting approval. The delivery is not complete after Task 5.
+also approved. The delivery is not complete after Task 5.
 
 **Goal:** Deliver a reusable managed TCP client, an unrestricted diagnostic
 console, shared readable hardware checks, persistent instance configuration, and

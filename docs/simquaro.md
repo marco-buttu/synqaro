@@ -10,22 +10,23 @@ and no injected faults. Its hardware commands follow the
 ## Install and run
 
 Use Linux with `/proc`, pidfds, a supported local filesystem, and Python 3.12 or
-newer. Python 3.12.3 is the tested interpreter; Python 3.13-specific transport
+newer. Python 3.12.3 (base) and 3.12.12 (web) are tested; Python 3.13-specific transport
 cleanup has been checked in source, not executed in that interpreter.
-There are no runtime dependencies. Setuptools is ordinary build tooling.
+The base CLI/library has no third-party runtime dependencies. The GUI uses the
+optional `web` extra (FastAPI/Uvicorn). Setuptools is ordinary build tooling.
 
 From the repository root, create an isolated environment and install:
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install .
+.venv/bin/python -m pip install '.[web]'
 .venv/bin/simquaro --help
 ```
 
 If the host lacks venv/ensurepip, install its Python venv support through your
 normal environment provisioning. Build tooling may need an approved package
 download. Do not install into the system interpreter. For development, use
-`.venv/bin/python -m pip install -e .` so source inventory edits apply to the
+`.venv/bin/python -m pip install -e '.[web]'` so source changes apply to the
 next command. A normal installation copies the package; after source edits,
 reinstall it into the same environment before restarting an instance.
 
@@ -40,18 +41,19 @@ PYTHONPATH=src python3 -m simquaro list
 point. Examples below assume the environment's `bin` directory is on `PATH`.
 Use the same environment and user in both terminals.
 
-## Architecture and planned manual interfaces
+## Architecture and manual interfaces
 
-**Status: partially implemented.** The CLI starts/stops simulators, controls
+The CLI starts/stops simulators, controls
 injected faults, and provides the manual console below. The shared production
 client is available under `synqaro_protocol`; tests construct that same client.
-The required browser GUI and external configuration are still being implemented.
+The GUI and CLI use the same persistent configuration and shared services.
+For first hands-on use follow [Getting started](getting_started.md).
 
 A simulator stands in for the physical apparatus and its firmware. A Synqaro
 Device is a separate control process that communicates with that apparatus or
 simulator. Starting a simulator does not start a Device.
 
-The planned manual command paths are:
+The manual command paths are:
 
 ```mermaid
 flowchart TB
@@ -103,7 +105,7 @@ concurrency limits.
 
 Simulator administration remains a separate path, not extra hardware commands:
 
-| Change | Planned application path |
+| Change | Application path |
 |---|---|
 | Operational property, such as frequency | Hardware protocol over TCP; no simulator restart |
 | Injected fault | Separate simulator test-control interface |
@@ -114,6 +116,55 @@ features of physical hardware. The GUI should offer only supported settings and
 distinguish saved configuration from the configuration currently in use. The
 configuration uses the versioned JSON file described below. Save and Apply are
 separate operations; general hot reload is not available.
+
+### Local browser server
+
+`simquaro gui [--port 8765] [--no-browser]` runs foreground on `127.0.0.1` only,
+one worker, no reload/proxy trust/CORS. It prints its URL after HTTP startup,
+then attempts to open the browser; it starts no simulators implicitly. Busy ports
+produce a corrective command and never cause another listener to be killed.
+The page has Control, Console, Tests and Configuration sections. No CLI subprocess
+is used: protocol operations use the production client or shared raw TCP transport.
+
+Each tab owns its own session. Guided mode uses normal client bootstrap/recovery;
+line/raw mode sends no probes, IDs, hidden polling or retries. Changing target/mode
+disconnects first. Explicit monitoring sends procedure status every 500 ms; normal
+event/job polling reads only server memory. Administration/fault refresh queries
+local simulator control, not hardware TCP.
+
+Limits: 16 sessions total/four per target, 120-second lease and 10-second browser
+heartbeat, 256 events/1 MiB per session with cursor-gap markers; 16 active jobs,
+64 retained completed reports, 1 MiB per report. No unbounded queue or permanent
+job log. Checks use a dedicated client, require other GUI connections closed and
+need per-run authorization to mutate. External-client isolation is up to the user.
+Physical targets reject simulator administration server-side as well as hiding it.
+
+Closing a tab leaves the server/simulator running. Ctrl+C closes sessions and
+stops only server-created children with verified ownership; preexisting instances
+remain running. After a server crash use normal `status`, `stop` or `restart`,
+not manual socket/lock deletion. TCP closure never implicitly cancels firmware work.
+
+The `/api` interface uses version-1 JSON envelopes, strict bounded bodies and
+tagged protocol numbers such as `{"number":"5.1234565"}`. State-changing requests
+require JSON content type and `X-Simquaro-Client: 1`. Exact Host/Origin checks,
+cross-site rejection and self-only CSP guard the browser boundary, not malicious
+local users/processes. Remote/multi-user serving needs a separate security design.
+Firmware text is displayed as text, never HTML.
+
+Persistent startup settings are not yet the historical software/configuration
+snapshot and audit store envisaged for the future control system.
+
+### Verified environment
+
+The 2026-11-04 pre-review acceptance ran on Linux Mint 22.1 (Ubuntu noble base):
+Python 3.12.3 for 293 base tests; Python 3.12.12 for 11 required web tests
+(five API, five real Chrome browser workflows, one foreground launch). All passed.
+Chrome 156.0.8078.79 used an isolated context with the Chromium sandbox enabled.
+Resolved web/test versions: FastAPI 0.162.0, Uvicorn 0.54.0, HTTPX 0.28.1,
+Playwright 1.64.1. Node, a frontend build, and browser downloads were not required
+in this environment. Other OS/browser versions and real physical hardware have
+not been verified. See the [delivery verification record](superpowers/verification/2026-11-04-simquaro-workbench.md)
+for packaging evidence, engineering rulings and final-review results.
 
 ### Shared validation workflow
 

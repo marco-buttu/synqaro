@@ -1,12 +1,11 @@
 # Shared protocol client, manual console, and validation checks
 
-**Status:** proposed detailed design for the client/console component of the
-combined delivery; awaiting user approval. No application implementation is
-authorized by this document alone.
+**Status:** detailed design approved by the user on 2026-11-03 for the
+client/console component of the combined delivery.
 
 Approved requirements are recorded in the consolidated delivery roadmap.
-Module/API names, resource bounds, and test-case selections below are proposed
-engineering choices, not additional decisions already approved by the user.
+Module/API names, resource bounds, and test-case selections below are the
+engineering choices accepted with that approval.
 
 ## Purpose and scope
 
@@ -21,7 +20,7 @@ GUI milestones: the work is not complete when only the library/CLI is available.
 This document details the shared client/console component; persistent instance
 configuration and the mandatory GUI are detailed in the
 [configuration/GUI design](2026-11-03-simquaro-configuration-gui-design.md), also
-awaiting approval. They are included in the delivery, not deferred
+approved with this design. They are included in the delivery, not deferred
 enhancements. No new models, firmware, agent, or system orchestration is included.
 Documentation accompanies every milestone.
 
@@ -245,16 +244,16 @@ until implemented and verified.
 Acceptance requires the existing regression suite, managed-client scripted-peer
 tests, console byte-exact subprocess tests, read-only safety tests, shared-case
 integration tests, package/import checks, and a clean documentation diff. External
-configuration/editor behavior and GUI dependency/API choices are now proposed
+configuration/editor behavior and GUI dependency/API choices are detailed
 in the linked configuration/GUI design and its companion plan. Those documents
-complete the technical proposal and await user approval before implementation.
+complete the technical design approved by the user on 2026-11-03.
 
 ## Mandatory GUI and combined-delivery completion
 
 The implementation sequence is shared protocol, managed client, CLI console,
 shared checks, persistent external instance configuration, mandatory browser GUI,
 and whole-delivery documentation/verification. This is the approved scope update;
-the linked companion documents now provide the proposed detailed design.
+the linked companion documents provide the approved detailed design.
 
 The GUI must let the user select a configured instance, connect/disconnect,
 submit guided requests or arbitrary diagnostic text/bytes, inspect actual replies
