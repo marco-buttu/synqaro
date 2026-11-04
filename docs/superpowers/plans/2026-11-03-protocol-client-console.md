@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** approved by the user on 2026-11-03. Tasks 1–5 detail
+**Status:** implemented and verified on 2026-11-04; approved on 2026-11-03. Tasks 1–5 detail
 the client/console component. The configuration/GUI milestones are now detailed
 as Tasks 6–11 in the [companion plan](2026-11-03-simquaro-configuration-gui.md),
 also approved. The delivery is not complete after Task 5.
@@ -79,19 +79,19 @@ Provide async `TcpConnection.open(host, port, *, clock, timeout=2.0)`,
 and `close() -> None`; transfer chunks at most 4096 bytes. Clock deadline helper
 owns and joins its operation/timer tasks on every exit.
 
-- [ ] Add transport tests asserting `b"a\x00\xff"` is sent unchanged, a 4097-byte
+- [x] Add transport tests asserting `b"a\x00\xff"` is sent unchanged, a 4097-byte
   payload is allowed, fragmented/coalesced data is returned without interpretation,
   EOF is empty bytes, late connect completion is closed, and send deadlines do
   not reset per chunk. Add literal request-encoding expectations and package
   import checks independent of simulator/test modules.
-- [ ] Run `env PYTHONPATH=src python3 -m unittest tests.simquaro.test_protocol_transport -v`;
+- [x] Run `env PYTHONPATH=src python3 -m unittest tests.simquaro.test_protocol_transport -v`;
   confirm failure from the absent new public API, not a broken fixture.
-- [ ] Move shared codec/errors/clock, add transport and request encoding, update
+- [x] Move shared codec/errors/clock, add transport and request encoding, update
   imports and package discovery (`simquaro*`, `synqaro_protocol*`). Reuse existing
   bounded deadline behavior; do not maintain parallel helper implementations.
-- [ ] Run the focused command and
+- [x] Run the focused command and
   `env PYTHONPATH=src python3 -m unittest discover -s tests -t . -v`; require all pass.
-- [ ] Inspect the diff and commit only this task's files.
+- [x] Inspect the diff and commit only this task's files.
 
 ### Task 2: Production managed client and receiver profile
 
@@ -104,22 +104,22 @@ reconnect-pause, and pending-count limits. `ClientContract` supplies those limit
 read_only=False, observe=None)` exposes the methods/properties in the design. Export the
 receiver binding as `FICTITIOUS_RECEIVER_CONTRACT`.
 
-- [ ] Add tests for explicit profile/identity binding, read-only rejection of all
+- [x] Add tests for explicit profile/identity binding, read-only rejection of all
   four mutation verbs including during recovery, and an importable client without
   simulator modules. Retain independent literals and existing EOF-after-bootstrap,
   EOF-after-refresh, full admission, reserved-error, late-response, cancellation,
   and uncertain-outcome regressions.
-- [ ] Run `env PYTHONPATH=src python3 -m unittest tests.simquaro.test_conformance tests.simquaro.test_recovery -v`;
+- [x] Run `env PYTHONPATH=src python3 -m unittest tests.simquaro.test_conformance tests.simquaro.test_recovery -v`;
   demonstrate the new binding/safety assertions fail before promotion.
-- [ ] Move the client state machine to production, replace direct stream usage
+- [x] Move the client state machine to production, replace direct stream usage
   with Task 1 transport, and move receiver validators/catalog to its shared
   profile. Replace test-only behavior with a construction fixture; migrate tests
   that patch transport internals without weakening their behavioral assertions.
   Preserve bounded human-readable evidence and unknown error codes.
   Include the optional exact-wire evidence observer required by the companion
   GUI plan, with observer exceptions isolated from request handling.
-- [ ] Run the focused command and full discovery command; require all pass.
-- [ ] Inspect the diff and commit only this task's files.
+- [x] Run the focused command and full discovery command; require all pass.
+- [x] Inspect the diff and commit only this task's files.
 
 ### Task 3: Manual console and CLI selection
 
@@ -129,20 +129,20 @@ receiver binding as `FICTITIOUS_RECEIVER_CONTRACT`.
 `console INSTANCE [--raw]`; global `--json` uses the existing version-1 envelope.
 Dispatch this command before creating/inspecting simulator Runtime.
 
-- [ ] Add subprocess/peer tests for normal literal ASCII+LF, all five raw escape
+- [x] Add subprocess/peer tests for normal literal ASCII+LF, all five raw escape
   forms, no LF insertion, missing-LF input, invalid escape sending nothing,
   4097-byte input allowed, 64-KiB decoded cap, safe reversible ESC/non-ASCII output,
   partial replies, EOF with stdin still open, Ctrl+C, piped stdin observation,
   one nonclosing no-data observation after two seconds, and JSON events without
   prompts. Assert the peer sees no hidden bootstrap,
   status, retries, or extra request IDs. Test endpoints without a simulator process.
-- [ ] Run `env PYTHONPATH=src python3 -m unittest tests.simquaro.test_console tests.simquaro.test_cli -v`;
+- [x] Run `env PYTHONPATH=src python3 -m unittest tests.simquaro.test_console tests.simquaro.test_cli -v`;
   confirm absent console behavior fails.
-- [ ] Implement input/display/cleanup using Task 1 transport. Bound encoded input
+- [x] Implement input/display/cleanup using Task 1 transport. Bound encoded input
   to four times 64 KiB plus terminator; stdin EOF half-closes and observes for
   at most two seconds. Remote EOF exits with a copyable reopen command.
-- [ ] Run focused tests and full discovery; require all pass.
-- [ ] Add console usage/troubleshooting to `docs/simquaro.md`, then commit the task.
+- [x] Run focused tests and full discovery; require all pass.
+- [x] Add console usage/troubleshooting to `docs/simquaro.md`, then commit the task.
 
 ### Task 4: Shared safe checks and readable test command
 
@@ -157,23 +157,23 @@ Extend `ModelDefinition` with defaulted `client_factory=None`, `checks=()`;
 factory signature is `(host, port, settings, *, read_only=False) -> ProtocolClient`.
 CLI adds `test INSTANCE [--allow-changes]`, not `test all`.
 
-- [ ] Add runner tests for permission skips, zero checks, wrong identity,
+- [x] Add runner tests for permission skips, zero checks, wrong identity,
   unsupported profile, bad preconditions, failed/uncertain operation, and a
   mislabeled mutating check stopped by the client's read-only gate. Assert
   no reset, replay, simulator start, or blind restoration. Keep the existing
   five-argument test model registration working and the console unbound to profiles.
-- [ ] Run `env PYTHONPATH=src python3 -m unittest tests.simquaro.test_checks tests.simquaro.test_test_cli -v`;
+- [x] Run `env PYTHONPATH=src python3 -m unittest tests.simquaro.test_checks tests.simquaro.test_test_cli -v`;
   confirm absent runner/command failures.
-- [ ] Implement the ten ordered receiver cases and exact values/bounds in the
+- [x] Implement the ten ordered receiver cases and exact values/bounds in the
   design. Reboot is last, sent once, and verified by new validated boot identity
   within a separate 30-second test budget; preserve uncertain causality. A scan
   cancellation race is not a successful cancellation assertion.
-- [ ] Wire explicit registry bindings and direct endpoint CLI execution, with
+- [x] Wire explicit registry bindings and direct endpoint CLI execution, with
   readable and version-1 JSONL reports. Exit 0 requires at least one executed
   check, all executed checks passed, and only permission-related skips;
   failure/no executable checks/runtime-precondition skips exit 1;
   malformed CLI invocation exits 2. Report intentional read-only skips distinctly.
-- [ ] Reuse the nominal shared cases from `test_smoke.py` rather than copy their
+- [x] Reuse the nominal shared cases from `test_smoke.py` rather than copy their
   logic. Keep independent raw-wire and simulator-only fault tests. Run focused
   commands and full discovery; require all pass. Commit only task files.
 
@@ -181,24 +181,24 @@ CLI adds `test INSTANCE [--allow-changes]`, not `test all`.
 
 **Interfaces:** Documentation reflects implemented CLI behavior, not future claims.
 
-- [ ] Create `docs/getting_started.md`: Python 3.12+, venv/install, explicit
+- [x] Create `docs/getting_started.md`: Python 3.12+, venv/install, explicit
   prerequisites, foreground simulator in one terminal, console/checks in another,
   raw byte examples, safe defaults, modifications and remaining state, and
   actionable errors. Link from README and the operator guide. Include the design
   diagram and explain administration status versus TCP protocol status.
-- [ ] Test documented installation in a temporary venv; verify both packages are
+- [x] Test documented installation in a temporary venv; verify both packages are
   installed, no runtime import needs `tests`, and entry-point help lists commands.
   Smoke-test documented workflows on Linux Mint 22.1; do not assert other OS
   releases or physical measurements were verified. Record results and limits.
-- [ ] Run `env PYTHONPATH=src python3 -m unittest discover -s tests -t . -v`,
+- [x] Run `env PYTHONPATH=src python3 -m unittest discover -s tests -t . -v`,
   `git diff --check`, local Markdown link/fence checks, and scoped diff inspection.
   If sandbox socket restrictions block tests, request escalation rather than
   silently substituting incomplete verification.
-- [ ] Obtain one independent component code review, resolve substantive
+- [x] Obtain one independent component code review, resolve substantive
   findings with regression tests, and rerun affected/full checks before claiming
   component completion. Record configuration and mandatory GUI as still required
   within the ongoing delivery.
-- [ ] Commit scoped component changes. Do not declare the user's task complete;
+- [x] Commit scoped component changes. Do not declare the user's task complete;
   continue with the configuration and GUI milestones after their concrete design.
 
 ### Milestone 6: Persistent external instance configuration
@@ -206,42 +206,42 @@ CLI adds `test INSTANCE [--allow-changes]`, not `test all`.
 The following milestone lists are scope summaries, not a second execution plan.
 Use companion-plan Tasks 6–11 for concrete interfaces, files, and verification.
 
-- [ ] Define and review storage format/location, supported editable fields,
+- [x] Define and review storage format/location, supported editable fields,
   validation, atomic persistence, and saved-versus-active state before coding.
-- [ ] Load instance definitions without editing installed Python modules; preserve
+- [x] Load instance definitions without editing installed Python modules; preserve
   the explicit model registry and existing programmatic construction interfaces.
-- [ ] Expose one configuration service for CLI/GUI use. Saving alone does not
+- [x] Expose one configuration service for CLI/GUI use. Saving alone does not
   silently change a running instance; explicit apply restarts only the affected
   simulator. Reject invalid settings without damaging the saved configuration.
-- [ ] Verify persistence across restarts, validation failures, and failed apply;
+- [x] Verify persistence across restarts, validation failures, and failed apply;
   document the effective state and actionable recovery instructions.
 
 ### Milestone 7: Mandatory usable browser GUI
 
-- [ ] Define and review the concrete local HTTP API, UI layout, session/connection
+- [x] Define and review the concrete local HTTP API, UI layout, session/connection
   ownership, dependency choices, local-access protections, and launch command.
   This milestone is required, not an optional follow-up.
-- [ ] Implement target selection and connection feedback, guided requests,
+- [x] Implement target selection and connection feedback, guided requests,
   normal/raw diagnostic console, actual request/response display, and long-action
   state. Reuse the library; do not invoke the CLI from the server or duplicate TCP.
-- [ ] Expose the same shared checks with readable progress/results and explicit
+- [x] Expose the same shared checks with readable progress/results and explicit
   authorization for modifying tests. Keep simulator lifecycle/fault controls
   separate from hardware protocol requests and unavailable for physical hardware.
-- [ ] Add supported configuration editing through Milestone 6, showing saved and
+- [x] Add supported configuration editing through Milestone 6, showing saved and
   effective values and explicit save/apply actions. Avoid implicit polling that
   consumes scheduled fault scenarios; keep raw and managed connections separate.
-- [ ] Verify browser behavior, server/API failures, disconnect/cleanup, and that
+- [x] Verify browser behavior, server/API failures, disconnect/cleanup, and that
   CLI/checks still work when the GUI server is stopped.
 
 ### Milestone 8: Whole-delivery handoff and verification
 
-- [ ] Extend the beginner guide with actual GUI installation/startup and a short
+- [x] Extend the beginner guide with actual GUI installation/startup and a short
   hands-on walkthrough: select receiver, set/get frequency, run a procedure,
   submit malformed input, inject a fault, run checks, and save/apply settings.
-- [ ] Verify that walkthrough in a browser on the supported local machine, plus
+- [x] Verify that walkthrough in a browser on the supported local machine, plus
   the complete regression suite, package installation, and documentation checks.
   Record any unverified claims explicitly; a mockup is not a delivered GUI.
-- [ ] Obtain independent whole-change review, fix substantive findings, and rerun
+- [x] Obtain independent whole-change review, fix substantive findings, and rerun
   verification. Declare completion only with an installed/launchable GUI and
   actionable user instructions. GitHub completion remains user-triggered.
 

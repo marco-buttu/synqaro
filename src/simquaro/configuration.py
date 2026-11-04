@@ -62,11 +62,14 @@ def _number(value, *, field_type):
         if not isinstance(value["number"], str) or len(value["number"]) > 64:
             raise ValueError("Numeric setting must have a bounded decimal spelling")
         from synqaro_protocol.codec import NumericToken
-        value = Decimal(NumericToken(value["number"]).text)
+        try:
+            value = Decimal(NumericToken(value["number"]).text)
+        except InvalidOperation:
+            raise ValueError("Numeric setting exceeds decimal capacity") from None
     if isinstance(value, Decimal):
         if not value.is_finite(): raise ValueError("Numeric setting must be finite")
         if field_type is int:
-            if value != value.to_integral_value() or abs(value) > 4294967295:
+            if value.copy_abs() > 4294967295 or value != value.to_integral_value():
                 raise ValueError("Integer setting is outside its supported capacity")
             return int(value)
         if field_type is not float:

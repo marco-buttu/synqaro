@@ -229,7 +229,7 @@ class ProtocolClient:
         session = self._session
         response = await self._exchange(verb, fields)
         target = (verb, fields.get("name"))
-        if target in self._affected and self._session_live(session):
+        if isinstance(fields.get("name"), str) and target in self._affected and self._session_live(session):
             try:
                 self.contract.refresh_usable(target, response)
             except LocalFailure:

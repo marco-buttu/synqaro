@@ -68,6 +68,44 @@ continuation; they are not additional user requirements.
 
 ## Independent review
 
-Pending the single fresh-context whole-delivery review and any substantive
-RED→GREEN fixes. No merge or physical-hardware validation claim follows from
-the pre-review results above.
+One fresh-context reviewer examined `6ce93b7..18fc399`, returning three Important
+findings, no Critical or Minor findings. All were accepted and reproduced before
+the single fix pass:
+
+- Saved endpoint/identity could remain stale in the header. The header now
+  explicitly describes the editor snapshot, refreshes on Save/Reload, and the
+  session displays actual pinned endpoint/expected identity and verification state
+  supplied by the server. Browser regression covers own and another tab's saves.
+- A list-valued `name` could hide a valid firmware `INVALID_TYPE` response with
+  a local TypeError. Refresh bookkeeping now requires a string name; an independent
+  literal peer verifies that the actual hardware error is returned unchanged.
+- Unicode request encoding and extreme configuration exponents could produce
+  plain HTTP 500. Expected local validation failures now return structured HTTP
+  400 with `uncertain:false`, no TX and no saved-file change. Decimal capacity is
+  checked without context-sensitive absolute-value arithmetic.
+
+A related GUI regression exposed during that fix pass: final job observation
+could replace an unsaved editor draft. Job completion now refreshes process state
+without reloading the editor, and edits are disabled while an explicit UI operation
+loads/replaces its fields. Both behaviors have browser regression coverage.
+
+Source post-fix acceptance: **295 base tests passed** (56.035 seconds) and
+**14 web tests passed** (36.526 seconds: six API, seven real-browser, one launch).
+Final normal-wheel acceptance outside the checkout also passed: **295 base tests**
+(58.937 seconds) and **14 web tests** (34.518 seconds). Production imports resolved
+to site-packages; only the repository root, not `src`, exposed deliberate test
+helpers to subprocesses. A separate new core-only venv verified imports, packaged
+assets and the missing-web-extra remedy without FastAPI installed.
+Final wheel SHA-256: `6ff64f5c599a3f864606ba0326105496a05339f3c11e049f1c6ad8b2b0d24d12`.
+Documentation link/fence checks (10 files) and `git diff --check` passed.
+
+Declined-to-judge rulings retained from the review:
+
+- Physical accuracy/scientific-data association is not established by simulator
+  or browser checks. Cost: real deployment needs physical acceptance and a separate
+  synchronization/data-plane design.
+- Remote/multi-user authentication remains excluded. Loopback Origin/Host checks
+  are not malicious-local-user authentication. Cost: do not expose this tool remotely.
+
+No substantive finding was waived; no deferred Minor findings. This review does
+not authorize a merge or imply that physical hardware was verified.

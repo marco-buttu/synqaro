@@ -48,3 +48,15 @@ class ProductionClientTests(ScriptedClientCase):
                              b'#status <id=2>\n', b'#status <id=3>\n'])
         self.assertIn(ok(3), rx)
         self.assertLessEqual(len(client.evidence), 256)
+
+    async def test_list_valued_name_returns_the_actual_hardware_error(self):
+        client = self.production()
+        self.clients.append(client)
+        await client.connect()
+        async def behavior(connection, frame, writer):
+            writer.write(b'#error <id=3>: code=INVALID_TYPE, parameter=name, expected=string\n')
+        self.behavior = behavior
+        response = await client.request("get", {"name": []})
+        self.assertEqual(response.verb, "error")
+        self.assertEqual(response.fields["code"], "INVALID_TYPE")
+        self.assertEqual(self.frames[-1][1], b'#get <id=3>: name=[]\n')

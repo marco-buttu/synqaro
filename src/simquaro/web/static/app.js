@@ -36,13 +36,13 @@ function notice(error) { $("notice").hidden = false; text("notice", error.messag
 async function action(operation) {
   if (working) return;
   working = true;
-  for (const control of document.querySelectorAll("button,select")) control.disabled = true;
+  for (const control of document.querySelectorAll("button,select,input,textarea")) control.disabled = true;
   $("notice").hidden = true;
   try { await operation(); }
   catch (error) { notice(error); }
   finally {
     working = false;
-    for (const control of document.querySelectorAll("button,select")) control.disabled = false;
+    for (const control of document.querySelectorAll("button,select,input,textarea")) control.disabled = false;
   }
 }
 function button(id, operation) { $(id).addEventListener("click", () => action(operation)); }
@@ -78,8 +78,7 @@ async function showTarget() {
   text("wire-log", "No TCP connection for " + current.name + ".");
   text("response", "No request sent to " + current.name + ".");
   jobId = null; $("monitor").checked = false;
-  text("target-description", `${current.kind === "simulator" ? "Simulator" : "Physical hardware"} / ${current.model}`);
-  text("target-endpoint", `${current.host}:${current.port} · expected identity: ${current.receiver?.hardware_id || "model-defined"}`);
+  renderTargetHeader();
   $("simulator-controls").hidden = current.kind !== "simulator";
   $("fault-controls").hidden = current.kind !== "simulator";
   $("apply-config").hidden = current.kind !== "simulator";
@@ -92,10 +91,16 @@ async function showTarget() {
   await refreshAdmin();
 }
 
+function renderTargetHeader() {
+  text("target-description", `${current.kind === "simulator" ? "Simulator" : "Physical hardware"} / ${current.model}`);
+  text("target-endpoint", `Saved endpoint (editor snapshot): ${current.host}:${current.port} · expected identity: ${current.receiver?.hardware_id || "model-defined"}`);
+}
+
 function renderConfig() {
   const saved = config.instances.find(t => t.name === current.name);
   if (!saved) throw new Error("Target removed from saved configuration; reload inventory.");
   current = {...current, ...saved};
+  renderTargetHeader();
   text("config-path", config.path + " · revision " + config.revision);
   text("config-source", config.source === "builtin" ? "Built-in defaults — not saved" : "Saved configuration file");
   text("saved-config", pretty(saved));
@@ -105,6 +110,7 @@ function renderConfig() {
     field.id = "config-" + key; field.value = String(value); field.dataset.key = key;
     field.dataset.setting = String(setting); field.dataset.numeric = String(numeric);
     field.maxLength = numeric ? 64 : 256;
+    field.disabled = working;
     if (numeric) field.inputMode = "decimal";
     label.htmlFor = field.id; label.append(document.createTextNode(labelText), field); fields.append(label);
   }
@@ -130,6 +136,9 @@ async function refreshAdmin() {
     "Pending — saved settings differ from active startup settings. Connect/Tests use the saved endpoint; Apply when ready." : "In sync — saved and active startup settings agree") :
     state.state === "stopped" ? "Stopped — saved settings will be used on Start" : "Active settings unknown — inspect the runtime error below");
   if (state.runtime && !state.runtime.ok) text("active-config", pretty(state.runtime));
+  if (state.revision !== config.revision) {
+    text("config-state", $("config-state").textContent + " Editor snapshot is stale; Reload saved configuration before saving.");
+  }
 }
 
 async function reloadConfig() {
@@ -179,13 +188,15 @@ function consume(history) {
   }
   cursor = history.newest;
   text("connection-state", history.state + " · " + history.mode);
+  text("session-revision", `TCP ${history.host}:${history.port} · expected identity: ${history.expected_hardware_id || "not supplied"} ` +
+    `(${history.identity_verified ? "verified by managed bootstrap" : "not verified"}) · pinned revision: ${history.revision}. ` +
+    (config.revision !== history.revision ? "Newer saved settings are loaded. This connection is not retargeted; reconnect explicitly." : "Save never retargets this connection."));
 }
 async function connect() {
   if (session) await disconnect();
   const history = await api("/sessions", "POST", {target:current.name, mode:$("mode").value});
   session = {id:history.id, target:current.name, revision:history.revision, mode:history.mode}; cursor = 0;
   consume(history);
-  text("session-revision", `Pinned saved revision: ${history.revision}. Existing connections are not retargeted by Save.`);
 }
 async function request(verb, fields = {}) {
   if (!session || session.mode !== "managed") throw new Error("Connect in Guided mode to use receiver operations.");
@@ -242,7 +253,6 @@ async function poll() {
         const history = await api("/sessions/" + oldSession.id + "/events?after=" + cursor);
         if (session?.id === oldSession.id) {
           consume(history);
-          if (config.revision !== oldSession.revision) text("session-revision", "Newer saved settings exist. This connection remains pinned to " + oldSession.revision + ". Disconnect and reconnect explicitly.");
         }
       } catch (error) {
         if (error.code === "UNKNOWN_SESSION" && session?.id === oldSession.id) {
@@ -259,7 +269,7 @@ async function poll() {
       if (job.kind === "tests") text("test-report", pretty(job));
       if (job.state !== "running") {
         jobId = null;
-        if (job.kind !== "tests") { await reloadConfig(); if (job.error || job.result?.ok === false) notice(new Error(pretty(job.error || job.result))); }
+        if (job.kind !== "tests") { await refreshAdmin(); if (job.error || job.result?.ok === false) notice(new Error(pretty(job.error || job.result))); }
       }
     }
     if ($("monitor").checked && session?.mode === "managed" && !working && !monitoring) {

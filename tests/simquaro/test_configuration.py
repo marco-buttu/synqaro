@@ -11,6 +11,16 @@ from unittest.mock import patch
 
 
 class ConfigurationTests(unittest.TestCase):
+    def test_extreme_decimal_integer_settings_are_rejected_as_validation_errors(self):
+        from simquaro.configuration import entry_from_record
+        from simquaro.instances import builtin_inventory
+        from simquaro.config import instance_record
+        for spelling in ("1e999999999", "1e999999999999999999999999999999999999999999"):
+            record = instance_record(builtin_inventory()["receiver-a"])
+            record["receiver"]["tuning_duration_ms"] = {"number":spelling}
+            with self.subTest(spelling=spelling), self.assertRaises(ValueError):
+                entry_from_record(record, tagged=True)
+
     def setUp(self):
         try: self.module = importlib.import_module("simquaro.configuration")
         except ImportError: self.fail("persistent configuration store is missing")

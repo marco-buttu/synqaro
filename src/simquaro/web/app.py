@@ -23,6 +23,7 @@ from simquaro.web import ServiceError
 from simquaro.web.jobs import JobManager
 from simquaro.web.sessions import SessionManager
 from synqaro_protocol.client import LocalFailure
+from synqaro_protocol.errors import ProtocolError
 
 
 def success(result, status=200):
@@ -149,6 +150,11 @@ def create_app(store, *, runtime_root=None, origin="http://127.0.0.1:8765"):
     @app.exception_handler(LocalFailure)
     async def communication(request, exc):
         return failure(exc.code, str(exc), 503, uncertain=exc.uncertain)
+
+    @app.exception_handler(ProtocolError)
+    async def encoding(request, exc):
+        # Request encoding failed locally, before TCP transmission.
+        return failure(exc.code, str(exc), 400, uncertain=False)
 
     @app.exception_handler(OSError)
     async def unavailable(request, exc):

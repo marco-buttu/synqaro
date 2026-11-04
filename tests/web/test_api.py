@@ -131,3 +131,26 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(report["result"]["counts"], {"passed":5,"failed":0,"skipped":5})
         listed = (await self.client.get("/api/targets/receiver-a/jobs")).json()["result"]["jobs"]
         self.assertEqual(len(listed), 2)
+
+    async def test_local_validation_is_structured_certain_and_transmits_no_request(self):
+        await self.job("start")
+        sid = (await self.post("/api/sessions", {"target":"receiver-a", "mode":"managed"})).json()["result"]["id"]
+        before = (await self.client.get(f"/api/sessions/{sid}/events")).json()["result"]
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.app, raise_app_exceptions=False),
+                                    base_url=ORIGIN, headers=HEADERS) as client:
+            invalid = await client.post(f"/api/sessions/{sid}/requests", json={"verb":"get", "fields":{"name":"é"}})
+            self.assertEqual(invalid.status_code, 400, invalid.text)
+            self.assertFalse(invalid.json()["error"]["uncertain"])
+            for spelling in ("1e999999999", "1e999999999999999999999999999999999999999999"):
+                record = entry_record(self.snapshot.entries["receiver-a"])
+                record["receiver"]["tuning_duration_ms"] = {"number":spelling}
+                response = await client.put("/api/config/receiver-a", json={"revision":self.snapshot.revision,"record":record})
+                self.assertEqual(response.status_code, 400, response.text)
+                self.assertFalse(response.json()["error"]["uncertain"])
+        after = (await self.client.get(f"/api/sessions/{sid}/events")).json()["result"]
+        self.assertEqual([e["data"] for e in after["events"] if e["kind"] == "tx"],
+                         [e["data"] for e in before["events"] if e["kind"] == "tx"])
+        self.assertEqual(self.store.load().revision, self.snapshot.revision)
+        hardware_error = await self.post(f"/api/sessions/{sid}/requests", {"verb":"get","fields":{"name":[]}})
+        self.assertEqual(hardware_error.status_code, 200, hardware_error.text)
+        self.assertEqual(hardware_error.json()["result"]["fields"]["code"], "INVALID_TYPE")

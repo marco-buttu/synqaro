@@ -150,6 +150,53 @@ class BrowserTests(unittest.TestCase):
         expect(self.page.locator("#fault-state")).to_contain_text('"command": "status"')
         self.assertEqual(self.errors, [])
 
+    def test_saved_header_and_connection_details_track_single_and_other_tab_saves(self):
+        self.start_and_connect()
+        endpoint = self.snapshot.entries["receiver-b"].config.port
+        other = self.context.new_page()
+        other.goto(self.url)
+        other.get_by_label("Target", exact=True).select_option("receiver-b")
+        other.get_by_role("button", name="Start simulator", exact=True).click()
+        expect(other.locator("#job-state")).to_contain_text("start: succeeded", timeout=8000)
+        expect(other.locator("#runtime-state")).to_contain_text("Process: running")
+        # This page saves a new endpoint and configured identity for receiver-a.
+        self.page.get_by_label("Saved TCP port", exact=True).fill(str(endpoint))
+        self.page.get_by_label("Expected hardware identity", exact=True).fill("saved-identity-two")
+        # Keep inventory endpoints unique by moving receiver-b's saved port first;
+        # its already-running process stays at the original endpoint.
+        other.get_by_label("Saved TCP port", exact=True).fill(str(free_port()))
+        other.get_by_role("button", name="Save configuration", exact=True).click()
+        expect(other.locator("#config-state")).to_contain_text("Pending")
+        self.page.get_by_role("button", name="Reload saved configuration", exact=True).click()
+        self.page.get_by_label("Saved TCP port", exact=True).fill(str(endpoint))
+        self.page.get_by_label("Expected hardware identity", exact=True).fill("saved-identity-two")
+        self.page.get_by_role("button", name="Save configuration", exact=True).click()
+        expect(self.page.locator("#target-endpoint")).to_contain_text(str(endpoint))
+        expect(self.page.locator("#target-endpoint")).to_contain_text("saved-identity-two")
+        self.page.get_by_label("Console mode", exact=True).select_option("raw")
+        self.page.get_by_role("button", name="Connect", exact=True).click()
+        expect(self.page.locator("#session-revision")).to_contain_text(f"127.0.0.1:{endpoint}")
+        expect(self.page.locator("#session-revision")).to_contain_text("saved-identity-two")
+        self.page.get_by_role("button", name="Disconnect", exact=True).click()
+        # Other tab changes identity; this page must show the snapshot actually
+        # used by Connect, not its stale editor/header.
+        other.get_by_label("Target", exact=True).select_option("receiver-a")
+        other.get_by_role("button", name="Reload saved configuration", exact=True).click()
+        other.get_by_label("Expected hardware identity", exact=True).fill("saved-identity-three")
+        other.get_by_role("button", name="Save configuration", exact=True).click()
+        expect(other.locator("#target-endpoint")).to_contain_text("saved-identity-three")
+        self.page.get_by_role("button", name="Connect", exact=True).click()
+        expect(self.page.locator("#session-revision")).to_contain_text("saved-identity-three")
+        self.assertEqual(self.errors, [])
+
+    def test_finished_job_observation_does_not_replace_an_unsaved_editor_draft(self):
+        self.start_and_connect()
+        self.page.get_by_label("Initial frequency (GHz)", exact=True).fill("6")
+        self.page.get_by_role("button", name="Stop simulator", exact=True).click()
+        expect(self.page.locator("#job-state")).to_contain_text("stop: succeeded", timeout=8000)
+        expect(self.page.locator("#runtime-state")).to_contain_text("Process: stopped")
+        expect(self.page.get_by_label("Initial frequency (GHz)", exact=True)).to_have_value("6")
+
     def test_configuration_save_apply_and_read_only_checks(self):
         self.start_and_connect()
         self.page.get_by_label("Initial frequency (GHz)", exact=True).fill("6")

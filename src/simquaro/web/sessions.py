@@ -192,6 +192,9 @@ class SessionManager:
         return {"id": session.id, "target": session.target, "mode": session.mode,
                 "state": session.state, "revision": session.revision, "source": session.source,
                 "host": session.config.host, "port": session.config.port,
+                "expected_hardware_id": (session.client.expected_hardware_id if session.client is not None else
+                                         getattr(session.config.settings, "hardware_id", None)),
+                "identity_verified": bool(session.client is not None and session.client.ready),
                 "oldest": oldest, "newest": session.sequence, "gap": after < oldest - 1,
                 "events": [dict(e) for e in session.events if e["cursor"] > after]}
 

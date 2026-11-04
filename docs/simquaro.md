@@ -165,6 +165,8 @@ Playwright 1.64.1. Node, a frontend build, and browser downloads were not requir
 in this environment. Other OS/browser versions and real physical hardware have
 not been verified. See the [delivery verification record](superpowers/verification/2026-11-04-simquaro-workbench.md)
 for packaging evidence, engineering rulings and final-review results.
+After the independent review and regression fixes, source acceptance passed
+295 base tests and 14 web tests (six API, seven real-browser workflows, one launch).
 
 ### Shared validation workflow
 
