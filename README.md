@@ -1,5 +1,5 @@
 # synqaro
-Synqaro is a framework for controlling and monitoring hardware, with AI agents helping develop, test, and maintain the control system.
+Synqaro is a framework for controlling and monitoring complex systems, with AI agents helping develop, test, and maintain the control system.
 
 ## Overview
 
