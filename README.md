@@ -1,5 +1,5 @@
 # synqaro
-AI-native control and engineering platform for complex distributed systems.
+Synqaro is a framework for controlling and monitoring hardware, with AI agents helping develop, test, and maintain the control system.
 
 ## Documentation
 
