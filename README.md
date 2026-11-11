@@ -25,6 +25,33 @@ Synqaro’s development approach is **bottom-up and AI-driven**: it starts with 
 
 Existing firmware does not have to adopt Synqaro’s proposed hardware protocol. When it uses another protocol, a dedicated adapter handles communication, and the simulator reproduces that existing interface. The Device still exposes a consistent interface to the rest of Synqaro, keeping hardware-specific protocols out of higher-level coordination logic.
 
+## Installation
+
+### Download and install
+
+1. [Download Synqaro](https://github.com/marco-buttu/synqaro/archive/refs/heads/main.zip).
+2. Extract the ZIP archive, open a terminal in the extracted folder, and run:
+
+   ```sh
+   bash install.sh
+   ```
+
+### Remove
+
+Open a terminal in the same extracted folder and run:
+
+```sh
+bash uninstall.sh
+```
+
+Your configuration is preserved. To remove it as well, run:
+
+```sh
+bash uninstall.sh --purge
+```
+
+The script asks for confirmation before deleting configuration files.
+
 ## Documentation
 
 ### Project
