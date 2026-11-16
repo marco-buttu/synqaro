@@ -1,23 +1,44 @@
 # Implement and verify hardware communication
 
-Once the [hardware contract](hardware_contract.md) is agreed, implement the
-firmware where applicable, a simulator, the communication library, and tests
-against that contract. Use the GUI to explore the behavior manually and automated
-tests to check the specified scenarios. Verify the real hardware when available.
+Once the [hardware contract](hardware_contract.md) is agreed, the agent implements
+the simulator. This guide uses a fictitious receiver as a working example to show
+how a simulator works and how it is organized.
 
-This guide shows a working example: a fictitious receiver created to demonstrate
-this process, with frequency settings, calibration, and scanning. It uses the
-[proposed communication protocol](hardware_protocol.md); it does not represent
-a real receiver or validate real firmware.
+## Start and stop the simulator
 
-Simquaro simulates the hardware. The GUI and automated hardware checks use the
-communication library to exchange TCP requests with it. The same checks can run
-against compatible hardware. Simquaro is not a Synqaro Device: this step verifies
-communication before integrating the hardware into the control system.
+Simquaro is a tool included in Synqaro for simulating hardware on your computer.
+To start the fictitious receiver simulator, open a terminal and run:
 
-Before you begin, [install Synqaro](../README.md#installation).
-Run the commands below from any directory. If your terminal cannot find
-`simquaro`, use `~/.local/bin/simquaro` instead in each command.
+```sh
+simquaro start receiver-a
+```
+
+To stop it, press **Ctrl+C** in the same terminal.
+
+Later in this guide, you will learn how to interact with the receiver simulator.
+
+## How the simulator is organized
+
+This explanation helps you understand how the simulator works. You do not need
+to develop it yourself: the agent will follow the same structure when implementing
+a simulator for your hardware.
+
+Simquaro provides:
+
+- **Communication code** that receives requests and sends responses according to
+  the [proposed communication protocol](hardware_protocol.md).
+- **A receiver model** that reproduces the receiver’s behavior and stores its
+  simulated state, such as the current frequency.
+- **Management tools** for starting and stopping simulator instances and
+  introducing faults for testing.
+
+The following diagram shows what happens when a client—a program communicating
+with the simulator—asks to change the frequency.
+
+![The client requests a frequency change to 5 GHz. Inside the receiver simulator, communication passes the request to the receiver model, which updates the simulated frequency and returns the result. Communication sends the response back to the client.](images/receiver-request-response.png)
+
+The management tools are not shown because they do not participate in this
+request and response.
 
 ## First use: the browser GUI
 
