@@ -13,9 +13,9 @@ Synqaro’s development approach is **bottom-up and AI-driven**: it starts with 
 
 ### Development workflow
 
-1. **Define the hardware contract.** Hardware developers work with Synqaro’s development agent to define the specifications for hardware to be built, or clarify the behavior of existing hardware. The contract covers commands, measurements, states, timing, errors, and operating constraints.
+1. **[Define the hardware contract](docs/hardware_contract.md).** Hardware developers work with Synqaro’s development agent to define the specifications for hardware to be built, or clarify the behavior of existing hardware. The contract covers commands, measurements, states, timing, errors, and operating constraints.
 
-2. **Implement and verify hardware communication.** At the user’s request, the agent develops the firmware where applicable, a hardware simulator, reusable communication libraries, and automated tests. The user explores the simulator through a GUI, while automated tests systematically exercise the specified behavior and failure scenarios. Tests are checked against the agreed contract; real firmware and hardware are also verified when available and safe to test.
+2. **[Implement and verify hardware communication](docs/getting_started.md).** At the user’s request, the agent develops the firmware where applicable, a hardware simulator, reusable communication libraries, and automated tests. The user explores the simulator through a GUI, while automated tests systematically exercise the specified behavior and failure scenarios. Tests are checked against the agreed contract; real firmware and hardware are also verified when available and safe to test.
 
 3. **Implement the Device.** The agent builds the Device using the communication libraries and verifies its commands, state handling, and error reporting. The Device can be exercised independently against the simulator and, subsequently, the real hardware.
 
@@ -23,7 +23,7 @@ Synqaro’s development approach is **bottom-up and AI-driven**: it starts with 
 
 5. **Create or extend user interfaces.** The agent develops the graphical interfaces requested by the user, supporting both operational tasks and technical diagnostics.
 
-Existing firmware does not have to adopt Synqaro’s proposed hardware protocol. When it uses another protocol, a dedicated adapter handles communication, and the simulator reproduces that existing interface. The Device still exposes a consistent interface to the rest of Synqaro, keeping hardware-specific protocols out of higher-level coordination logic.
+Existing firmware does not have to adopt Synqaro’s [proposed communication protocol](docs/hardware_protocol.md). When it uses another protocol, a dedicated adapter handles communication, and the simulator reproduces that existing interface. The Device still exposes a consistent interface to the rest of Synqaro, keeping hardware-specific protocols out of higher-level coordination logic.
 
 ## Installation
 
@@ -52,6 +52,13 @@ bash uninstall.sh --purge
 
 The script asks for confirmation before deleting configuration files.
 
+## Getting Started
+
+Start with the first two steps of the development workflow:
+
+1. [Define the hardware contract](docs/hardware_contract.md): describe the hardware and agree on its behavior and communication protocol.
+2. [Implement and verify hardware communication](docs/getting_started.md): explore a fictitious receiver through the GUI, send requests, inject faults, and run checks.
+
 ## Documentation
 
 ### Project
@@ -66,14 +73,5 @@ The script asks for confirmation before deleting configuration files.
 
 ### Development and testing
 
-Inside the repository's Python 3.12+ virtual environment:
-
-```sh
-.venv/bin/python -m pip install -e '.[web]'
-.venv/bin/simquaro gui
-```
-
-First-time setup and browser walkthrough:
-
-- [Getting started](docs/getting_started.md)
+- [Developer verification](docs/getting_started.md#scope-and-developer-verification)
 - [Simquaro operator guide](docs/simquaro.md)
