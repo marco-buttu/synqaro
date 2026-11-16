@@ -10,4 +10,4 @@ The agent will ask for missing information and prepare a specification for you t
 
 Instructions for interacting with the agent will be added when that interface is available.
 
-Next: [implement and verify hardware communication](getting_started.md), using the fictitious receiver as an example.
+Next: [implement and verify hardware communication](getting_started.md), using a fictitious receiver as an example.
