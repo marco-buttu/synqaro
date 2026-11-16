@@ -40,6 +40,291 @@ with the simulator—asks to change the frequency.
 The management tools are not shown because they do not participate in this
 request and response.
 
+## What we will verify
+
+Once the agent has implemented the simulator, we need to check that it behaves as
+specified in the hardware contract. Before trying it, let’s look at what our
+fictitious receiver can do.
+
+A receiver can be tuned to a frequency, much like a radio. In this example, we can:
+
+- **Set and read the frequency.** Choose a value between 1 and 10 GHz, then ask
+  the receiver which frequency is currently set.
+- **Read its status.** Check whether it reports a fault, whether an operation is
+  running, and whether it is calibrated.
+- **Run a calibration.** Calibration normally adjusts a receiver using a known
+  reference. Our simulator reproduces this procedure without physical measurements.
+  It takes about ten seconds and, if successful, marks the receiver as calibrated.
+  During calibration, the operating frequency cannot be read or changed.
+  Successful calibration restores the frequency that was set before it started.
+- **Request cancellation.** Ask the receiver to stop an ongoing calibration,
+  when cancellation is allowed.
+
+Changing the operating frequency invalidates the previous calibration.
+
+## Try the receiver from the command line
+
+The command-line interface (CLI) lets you type requests and inspect the receiver’s
+responses. These manual checks are optional because automated tests provide more
+comprehensive, targeted checks of the specified scenarios. Manual checks help you
+explore the behavior or investigate a problem.
+
+### Start the simulator
+
+Open a terminal and run:
+
+```sh
+simquaro start receiver-a
+```
+
+This starts the fictitious receiver named `receiver-a`. It is now running and
+waiting for requests. Keep this terminal open.
+
+### Open a console
+
+In a second terminal, run:
+
+```sh
+simquaro console receiver-a
+```
+
+The console connects to the running simulator. It lets you write a request,
+sends it to the simulator, and displays the response.
+
+**Starting the simulator and opening a console are different operations.**
+The console does not start the receiver, and closing the console does not stop it.
+
+You can open a console in the same way for any configured target implementing the
+[default communication protocol](hardware_protocol.md). The request syntax is
+shared; the available properties and operations depend on the hardware.
+
+The name selects the simulator you want to use. If another simulator were
+configured with the name `pippo`, you would start it with:
+
+```sh
+simquaro start pippo
+```
+
+And open its console with:
+
+```sh
+simquaro console pippo
+```
+
+### Set and read the frequency
+
+In the receiver console, enter this request and press **Enter**:
+
+```text
+#set <id=1>: name=frequency, value=5.5, unit=GHz
+```
+
+Response:
+
+```text
+#ok <id=1>: name=frequency, value=5.5, unit=GHz
+```
+
+`ok` confirms that the simulator has applied the setting.
+
+Each request in the [default protocol](hardware_protocol.md) has an `id`.
+Use a higher number for every new request on the same connection. The response
+repeats that number so you can match it to the request. The console adds the
+newline required by the protocol when you press **Enter**.
+
+Now read the frequency:
+
+```text
+#get <id=2>: name=frequency
+```
+
+Example response:
+
+```text
+#ok <id=2>: name=frequency, value=5.5, unit=GHz, sampled_at=2026-11-16T10:00:00Z
+```
+
+`sampled_at` tells you when the value was read.
+
+### Start a calibration and check its result
+
+Calibration takes about ten seconds. The receiver replies promptly to confirm
+acceptance; it does not wait for calibration to finish before replying. You will
+then ask for its status to find out whether it has completed.
+
+Enter the following request and wait for the acceptance response:
+
+```text
+#run <id=3>: name=calibrate
+```
+
+Response:
+
+```text
+#accepted <id=3>
+```
+
+`accepted` means that calibration has been accepted for execution, not that it
+has finished.
+
+Ask how it is progressing:
+
+```text
+#status <id=4>: name=calibrate
+```
+
+While calibration is running, the response reports `state=running`. After about
+ten seconds, ask again using a new ID:
+
+```text
+#status <id=5>: name=calibrate
+```
+
+A successful calibration reports `state=succeeded`. The response also includes
+its start and finish times when available.
+
+### Send requests from a script
+
+The console is useful when you want to choose and type each request yourself.
+A script is useful when you want to repeat a prepared sequence without typing
+the requests again.
+
+The script connects directly to the running simulator. It does **not** send
+requests through the console.
+
+Keep the simulator running in the first terminal. You can close the console with
+**Ctrl+C** and use that second terminal to run the script.
+
+The following example is a Python script that explains each operation and waits
+for you to press **Enter** before sending the request. It then displays the
+response received from the simulator.
+
+<details>
+<summary>Show the Python example</summary>
+
+Save this code as `try_receiver.py`:
+
+```python
+import socket
+
+
+def exchange(connection, reader, *, explanation, request, expected_reply):
+    input(f"\n{explanation}\nPress Enter to send the request.")
+    print(f"Request:  {request}")
+
+    connection.sendall((request + "\n").encode("ascii"))
+    response = reader.readline(4097)
+
+    if not response:
+        raise ConnectionError("The receiver closed the connection.")
+    if len(response) > 4096 or not response.endswith(b"\n"):
+        raise ValueError("The receiver returned an invalid message.")
+
+    text = response.decode("ascii").rstrip("\n")
+    print(f"Response: {text}")
+
+    if text != expected_reply and not text.startswith(expected_reply + ":"):
+        raise RuntimeError(f"Unexpected response: {text}")
+
+
+# Default address of receiver-a.
+with socket.create_connection(("127.0.0.1", 9001), timeout=2) as connection:
+    with connection.makefile("rb") as reader:
+        exchange(
+            connection,
+            reader,
+            explanation="Set the receiver frequency to 5.5 GHz.",
+            request="#set <id=1>: name=frequency, value=5.5, unit=GHz",
+            expected_reply="#ok <id=1>",
+        )
+
+        exchange(
+            connection,
+            reader,
+            explanation="Read the frequency currently set.",
+            request="#get <id=2>: name=frequency",
+            expected_reply="#ok <id=2>",
+        )
+
+        exchange(
+            connection,
+            reader,
+            explanation="Start calibration. Acceptance does not mean completion.",
+            request="#run <id=3>: name=calibrate",
+            expected_reply="#accepted <id=3>",
+        )
+
+        exchange(
+            connection,
+            reader,
+            explanation="Check the calibration state.",
+            request="#status <id=4>: name=calibrate",
+            expected_reply="#ok <id=4>",
+        )
+
+        exchange(
+            connection,
+            reader,
+            explanation="Check again. Calibration normally takes about ten seconds.",
+            request="#status <id=5>: name=calibrate",
+            expected_reply="#ok <id=5>",
+        )
+```
+
+`request` is the message sent to the simulator. `expected_reply` identifies the
+expected response type and request ID; it is used to check the actual response
+and is never sent.
+
+From the folder where you saved the file, run:
+
+```sh
+python3 try_receiver.py
+```
+
+The script sends one request at a time and waits for its response before offering
+the next step. It stops if communication fails or the receiver returns an
+unexpected response. It does not retry commands automatically.
+
+The last response tells you the calibration’s current state. It may still be
+running if you proceed quickly. Finishing the script does not itself prove that
+calibration succeeded.
+
+This is a guided communication example, not an automated verification test.
+
+</details>
+
+You can ask the agent to write a script for the sequence you want to try.
+For example:
+
+> Set the receiver frequency to 5.5 GHz, read it back, start calibration, and check
+> its status until it finishes.
+
+### How the console and script communicate
+
+Both the console and the Python script connect to the **Communication** component
+shown in the earlier diagram. Each uses its own TCP connection.
+
+```text
+                         RECEIVER SIMULATOR
+                    ┌──────────────────────────────────────┐
+┌────────────────┐  │  ┌───────────────┐  ┌─────────────┐  │
+│ Console        │◄───►│               │  │             │  │
+└────────────────┘  │  │ Communication │◄►│ Receiver    │  │
+┌────────────────┐  │  │               │  │ model       │  │
+│ Python script  │◄───►│               │  │             │  │
+└────────────────┘  │  └───────────────┘  └─────────────┘  │
+                    └──────────────────────────────────────┘
+```
+
+Communication receives requests, passes them to the receiver model, and sends
+each response back to the connection that made the request. The messages follow
+the [default communication protocol](hardware_protocol.md).
+
+The receiver model is shared. If the script changes the frequency, a subsequent
+read from the console sees the new value.
+
+To stop the simulator, press **Ctrl+C** in the terminal where you started it.
+
 ## First use: the browser GUI
 
 ```sh
@@ -106,33 +391,9 @@ simquaro --config /absolute/path/instances.json gui
 Use the same global `--config` for related CLI commands. GUI editing covers
 existing targets only. Add instances of registered models in version-1 JSON,
 run `config validate`, and Reload inventory; see the [operator guide](simquaro.md)
-before identity/model/kind changes. The terminal-only alternative follows.
+before identity/model/kind changes.
 
-## Terminal alternative: start the receiver
-
-In the first terminal:
-
-```sh
-simquaro start receiver-a
-```
-
-Keep this terminal open. The initial example listens on `127.0.0.1:9001` with a
-frequency of 5 GHz. Startup output confirms the local process/control listener;
-that is not a protocol or physical-hardware health measurement.
-
-## Exchange requests manually
-
-Open a second terminal:
-
-```sh
-simquaro console receiver-a
-```
-
-Type `#get <id=1>: name=frequency` and press Enter. You should receive an `ok`
-reply with `value=5, unit=GHz`. The console appends the required newline but does
-not insert IDs or repair input. Send `#status <id=2>` for general hardware state.
-IDs must increase on each connection. A second console has an independent ID
-sequence. Ctrl+C closes only that console, not the hardware procedure/simulator.
+## Advanced console use
 
 Use raw mode for bytes or deliberately incomplete requests:
 
