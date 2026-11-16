@@ -304,17 +304,7 @@ For example:
 Both the console and the Python script connect to the **Communication** component
 shown in the earlier diagram. Each uses its own TCP connection.
 
-```text
-                         RECEIVER SIMULATOR
-                    ┌──────────────────────────────────────┐
-┌────────────────┐  │  ┌───────────────┐  ┌─────────────┐  │
-│ Console        │◄───►│               │  │             │  │
-└────────────────┘  │  │ Communication │◄►│ Receiver    │  │
-┌────────────────┐  │  │               │  │ model       │  │
-│ Python script  │◄───►│               │  │             │  │
-└────────────────┘  │  └───────────────┘  └─────────────┘  │
-                    └──────────────────────────────────────┘
-```
+![Console and Python script each send requests over their own TCP connection to the simulator's Communication component and receive responses. Communication passes requests to the shared Receiver model and receives results. Blue arrows show requests; green arrows show results and responses.](images/console-script-communication.png)
 
 Communication receives requests, passes them to the receiver model, and sends
 each response back to the connection that made the request. The messages follow
