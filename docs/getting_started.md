@@ -1,59 +1,33 @@
-# Getting started with Simquaro
+# Implement and verify hardware communication
 
-Simquaro emulates hardware for development and manual failure testing. It is not
-the Synqaro control system or a Device. This guide starts the fictitious receiver;
-its protocol is described in [Hardware Protocol](hardware_protocol.md).
+Once the [hardware contract](hardware_contract.md) is agreed, implement the
+firmware where applicable, a simulator, the communication library, and tests
+against that contract. Use the GUI to explore the behavior manually and automated
+tests to check the specified scenarios. Verify the real hardware when available.
 
-## 1. Prepare Python
+This guide shows a working example: a fictitious receiver created to demonstrate
+this process, with frequency settings, calibration, and scanning. It uses the
+[proposed communication protocol](hardware_protocol.md); it does not represent
+a real receiver or validate real firmware.
 
-Use a Linux machine with Python 3.12 or newer, `/proc`, and Linux pidfd support.
-Linux Mint is the initial test environment; support for every Ubuntu derivative
-or Python version is not implied. Check your interpreter first:
+Simquaro simulates the hardware. The GUI and automated hardware checks use the
+communication library to exchange TCP requests with it. The same checks can run
+against compatible hardware. Simquaro is not a Synqaro Device: this step verifies
+communication before integrating the hardware into the control system.
 
-```sh
-python3 --version
-```
-
-If the version is older than 3.12, select an installed supported interpreter or
-install it through your normal system provisioning before continuing. Do not
-change your system's default Python just for Simquaro. No pyenv is required.
-If virtual-environment creation reports missing venv/ensurepip, install the venv
-support package matching that interpreter through your distribution's package
-manager, then retry. Do not use `sudo pip`.
-
-## 2. Install in an isolated environment
-
-Open a terminal in the Synqaro repository directory:
-
-```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install -e '.[web]'
-.venv/bin/simquaro --help
-.venv/bin/simquaro list
-```
-
-If using another supported interpreter, replace only the first `python3` with its
-path. The `.venv` directory keeps dependencies separate from your system Python.
-The `-e` installation uses this checkout's source, so development changes are
-available without reinstalling ordinary Python modules. Build tooling may need
-an approved package download. Commands below use explicit `.venv/bin` paths so
-you need not activate the environment.
-
-The `web` extra installs the GUI server. CLI/library-only users may install `-e .`
-instead; those commands require no web server or third-party runtime packages.
-On Linux Mint 22.x / Ubuntu 24.04 using default Python 3.12, missing venv support
-can be installed with `sudo apt install python3-venv`. This guide does not require
-pyenv, system-Python replacement, or `sudo pip`.
+Before you begin, [install Synqaro](../README.md#installation).
+Run the commands below from any directory. If your terminal cannot find
+`simquaro`, use `~/.local/bin/simquaro` instead in each command.
 
 ## First use: the browser GUI
 
 ```sh
-.venv/bin/simquaro gui
+simquaro gui
 ```
 
 Keep the terminal open. It prints `http://127.0.0.1:8765` and opens your browser
 after HTTP startup succeeds. If opening fails, copy the URL manually. For a busy
-port use `.venv/bin/simquaro gui --port 8766`; `--no-browser` suppresses opening.
+port use `simquaro gui --port 8766`; `--no-browser` suppresses opening.
 Launching the GUI does not start a simulator automatically.
 
 1. Select **receiver-a**, click **Start simulator**, and wait for `start: succeeded`.
@@ -104,8 +78,8 @@ Default file: `$XDG_CONFIG_HOME/simquaro/instances.json` when that variable is a
 absolute path, otherwise `~/.config/simquaro/instances.json`. To select another:
 
 ```sh
-.venv/bin/simquaro --config /absolute/path/instances.json config init
-.venv/bin/simquaro --config /absolute/path/instances.json gui
+simquaro --config /absolute/path/instances.json config init
+simquaro --config /absolute/path/instances.json gui
 ```
 
 Use the same global `--config` for related CLI commands. GUI editing covers
@@ -113,24 +87,24 @@ existing targets only. Add instances of registered models in version-1 JSON,
 run `config validate`, and Reload inventory; see the [operator guide](simquaro.md)
 before identity/model/kind changes. The terminal-only alternative follows.
 
-## 3. Start the receiver
+## Terminal alternative: start the receiver
 
 In the first terminal:
 
 ```sh
-.venv/bin/simquaro start receiver-a
+simquaro start receiver-a
 ```
 
 Keep this terminal open. The initial example listens on `127.0.0.1:9001` with a
 frequency of 5 GHz. Startup output confirms the local process/control listener;
 that is not a protocol or physical-hardware health measurement.
 
-## 4. Exchange requests manually
+## Exchange requests manually
 
-Open a second terminal in the same repository:
+Open a second terminal:
 
 ```sh
-.venv/bin/simquaro console receiver-a
+simquaro console receiver-a
 ```
 
 Type `#get <id=1>: name=frequency` and press Enter. You should receive an `ok`
@@ -142,7 +116,7 @@ sequence. Ctrl+C closes only that console, not the hardware procedure/simulator.
 Use raw mode for bytes or deliberately incomplete requests:
 
 ```sh
-.venv/bin/simquaro console receiver-a --raw
+simquaro console receiver-a --raw
 ```
 
 Here type `#status <id=1>\n`: the two characters `\n` represent one LF byte.
@@ -151,12 +125,12 @@ Invalid escape notation is rejected locally; invalid protocol messages are sent.
 Missing replies, malformed replies, and closure are shown honestly; no fake error
 response is invented. For exact framing/timeout rules see the operator guide.
 
-## 5. Run readable checks
+## Run readable checks
 
 Close the console, then run:
 
 ```sh
-.venv/bin/simquaro test receiver-a
+simquaro test receiver-a
 ```
 
 This performs five read-only checks and clearly skips five checks requiring
@@ -166,7 +140,7 @@ run does not calibrate, change frequency, cancel an action, or reboot.
 Only for an isolated target where changing state is authorized:
 
 ```sh
-.venv/bin/simquaro test receiver-a --allow-changes
+simquaro test receiver-a --allow-changes
 ```
 
 This also tests rounding, calibration, scan, cancellation, and reboot. It leaves
@@ -174,10 +148,10 @@ state changed and does not restore earlier calibration/history. A failed or
 uncertain test prevents later modifying checks. Neither reads nor `accepted`
 responses prove the physical output of real hardware is correct.
 
-## 6. Stop
+## Stop
 
 ```sh
-.venv/bin/simquaro stop receiver-a
+simquaro stop receiver-a
 ```
 
 Alternatively Ctrl+C in the terminal that started the simulator cleans its owned
@@ -192,15 +166,15 @@ After a crash use normal start/status/stop/restart, not manual socket/lock delet
 
 - Connection refused: start the selected simulator, check its printed endpoint,
   and retry console/test. These commands never start a simulator implicitly.
-- Already running: use it, or run `.venv/bin/simquaro restart receiver-a` if you
+- Already running: use it, or run `simquaro restart receiver-a` if you
   explicitly need a restart. Process status and hardware-protocol health differ.
 - No response: inspect the console's byte evidence and the framing rules; a
   timeout does not prove a modifying command was not executed. Do not blindly
   repeat it.
 - For injected faults, detailed diagnostics, and JSON output, read the
   [operator guide](simquaro.md).
-- Missing GUI packages: run `.venv/bin/python -m pip install -e '.[web]'` in the
-  repository, not a different Python environment.
+- Missing GUI packages: rerun `bash install.sh` from the downloaded project
+  folder, as described in [Installation](../README.md#installation).
 - Expired session: explicitly reconnect; the UI never resends a lost command.
 - Lost HTTP response during a change: inspect **Recent jobs** and explicitly query
   hardware state; do not repeat blindly. Recent jobs are not a permanent log.
@@ -208,9 +182,9 @@ After a crash use normal start/status/stop/restart, not manual socket/lock delet
   `config validate` / `config init`; existing invalid files never fall back to defaults.
 
 Persistent startup settings can now be inspected with
-`.venv/bin/simquaro config show` and explicitly initialized with
-`.venv/bin/simquaro config init`. Saving settings alone does not change a running
-instance; `.venv/bin/simquaro config apply receiver-a` applies them through a
+`simquaro config show` and explicitly initialized with
+`simquaro config init`. Saving settings alone does not change a running
+instance; `simquaro config apply receiver-a` applies them through a
 foreground restart. See the operator guide before editing/applying configuration.
 
 ## Scope and developer verification
@@ -222,11 +196,14 @@ configuration under your own change control when historical reconstruction matte
 Bulk scientific transfer and exact scan-frequency/data association remain open
 protocol topics. Simulator tests do not establish physical-hardware correctness.
 
-Run base and required web/browser suites separately:
+The following commands are for contributors working on source code. From the
+repository directory, create a separate development environment with a supported
+Python 3.12+ interpreter and run the base and web/browser suites:
 
 ```sh
-PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -t . -v
+python3 -m venv .venv
 .venv/bin/python -m pip install -e '.[web,browser-test]'
+PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -t . -v
 PYTHONPATH=src .venv/bin/python -m unittest discover -s tests/web -v
 ```
 
