@@ -7,6 +7,7 @@ let targets = [], config = null, current = null, session = null, cursor = 0;
 let wire = [], jobId = null, working = false, polling = false, monitoring = false;
 let faultCatalog = [];
 let observations = [], observing = false;
+let workspace = "";
 const submissionErrors = new Map();
 
 async function api(path, method = "GET", body) {
@@ -111,7 +112,9 @@ function availability() {
   $("disconnect").disabled = working || !session;
 }
 function renderPanels() {
-  const panel = $("workspace").value;
+  const panel = workspace;
+  for (const button of document.querySelectorAll('[data-workspace]'))
+    button.setAttribute('aria-pressed', String(button.dataset.workspace === panel));
   for (const id of ["console", "control", "tests", "configuration"])
     $(id).hidden = !current || (panel === "communication" ? !["console", "control"].includes(id) : panel !== id);
   $("tool-target-group").hidden = !panel;
@@ -122,12 +125,12 @@ function renderPanels() {
 }
 async function syncTools(preferred) {
   let choices = kindTargets();
-  if ($("workspace").value === "communication") choices = choices.filter(t => observations.some(r =>
+  if (workspace === "communication") choices = choices.filter(t => observations.some(r =>
     r.name === t.name && (r.kind === "simulator" ? r.state === "running" :
       r.state === "connected" || t.name === current?.name)));
   const wanted = preferred || current?.name || $("target").value;
   selectOptions($("tool-target"), choices.map(t => [t.name,
-    $("workspace").value === "communication" && t.kind === "hardware" &&
+    workspace === "communication" && t.kind === "hardware" &&
       observations.find(r => r.name === t.name)?.state !== "connected" ? `${t.name} (disconnected)` : t.name]));
   $("tool-target").value = choices.some(t => t.name === wanted) ? wanted : (choices[0]?.name || "");
   if (current?.name !== ($("tool-target").value || undefined)) await showTarget();
@@ -161,7 +164,7 @@ function renderManagement() {
     const active = ["running", "connected"].includes(r.state);
     const icon = error || r.state === "unknown" ? "✕" : running ? "◌" : active ? "✓" : "○";
     const label = running ? `${job.kind}: running…` : r.state;
-    return {error, running, active, icon, message: `${icon} ${r.name} ${simulator ? "simulator" : "hardware"}: ${label}` +
+    return {error, running, active, icon, summary: `${icon} ${r.name}: ${label}`, message: `${icon} ${r.name} ${simulator ? "simulator" : "hardware"}: ${label}` +
       (r.owner ? ` (${r.owner === "gui" ? "managed by GUI" : "external"})` : "") +
       (error ? ` — ${typeof error === "string" ? error : pretty(error)}` : "")};
   }
@@ -176,8 +179,8 @@ function renderManagement() {
   const gui = allRows.filter(r => r.state === "running" && r.owner === "gui").length;
   const external = allRows.filter(r => r.state === "running" && r.owner === "external").length;
   const connected = allRows.filter(r => r.state === "connected").length;
-  const summary = simulator ? `${gui} active managed by GUI · ${external} active externally` : `${connected}/${allRows.length} connected`;
-  text("management-status", (rows.length === 1 && $("target").value !== "all" ? detail(rows[0]).message + " · " : "") +
+  const summary = simulator ? `GUI: ${gui} · External: ${external}` : `${connected}/${allRows.length} connected`;
+  text("management-status", (rows.length === 1 && $("target").value !== "all" ? detail(rows[0]).summary + " · " : "") +
     summary + (pending ? ` · ${pending} in progress` : "") + (failed ? ` · ${failed} failed — see Details` : ""));
   $("management-status").classList.toggle("failure", failed > 0);
   $("management-status").classList.toggle("success", failed === 0 && gui + external + connected > 0);
@@ -429,7 +432,11 @@ $("target-kind").addEventListener("change", () => action(async () => {
   localStorage.setItem("synqaro-target-kind", $("target-kind").value);
   session = null; current = null; await loadInventory();
 }));
-$("workspace").addEventListener("change", () => action(() => syncTools()));
+for (const button of document.querySelectorAll('[data-workspace]'))
+  button.addEventListener('click', () => action(async () => {
+    workspace = button.dataset.workspace;
+    await syncTools();
+  }));
 $("tool-target").addEventListener("change", () => action(showTarget));
 $("monitor").addEventListener("change", () => {
   if ($("monitor").checked && (!session || session.mode !== "managed")) {
