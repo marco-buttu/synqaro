@@ -63,6 +63,90 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.client.get("/api/targets/receiver-a/admin")).json()["result"]["state"], "stopped")
         self.assertIn("default-src 'self'", response.headers["content-security-policy"])
 
+    async def test_management_distinguishes_external_process_and_preserves_it_on_shutdown(self):
+        external = await self.app.state.runtime.start(self.snapshot.entries['receiver-a'].config)
+        self.addAsyncCleanup(self.app.state.runtime.stop, 'receiver-a')
+        response = await self.client.get('/api/management')
+        self.assertEqual(response.status_code, 200)
+        rows = {r['name']: r for r in response.json()['result']['targets']}
+        self.assertEqual((rows['receiver-a']['state'], rows['receiver-a']['owner']), ('running', 'external'))
+        self.assertEqual(rows['physical-b']['state'], 'disconnected')
+        self.assertFalse(self.app.state.sessions._sessions)
+        await self.job('start')  # Observing an existing process does not adopt it.
+        await self.app.state.jobs.close()
+        self.assertEqual((await self.app.state.runtime.inspect(self.snapshot.entries['receiver-a'].config))['outcome'], 'running')
+
+    async def test_persistent_connection_is_discoverable_survives_lease_and_closes_at_shutdown(self):
+        await self.job('start')
+        response = await self.post('/api/sessions', {'target':'receiver-a', 'mode':'managed', 'persistent':True})
+        self.assertEqual(response.status_code, 200, response.text)
+        sid = response.json()['result']['id']
+        self.app.state.sessions._sessions[sid].deadline = 0
+        await self.app.state.sessions.expire()
+        rows = (await self.client.get('/api/management')).json()['result']['targets']
+        row = next(r for r in rows if r['name']=='receiver-a')
+        self.assertEqual(row['owner'], 'gui')
+        self.assertEqual(row['sessions'][0]['id'], sid)
+        self.assertEqual(row['sessions'][0]['state'], 'connected')
+        again = await self.post('/api/sessions', {'target':'receiver-a', 'mode':'managed', 'persistent':True})
+        self.assertEqual(again.json()['result']['id'], sid)
+        conflict = await self.post('/api/sessions', {'target':'receiver-a', 'mode':'raw', 'persistent':True})
+        self.assertEqual(conflict.status_code, 409)
+        self.assertEqual(len(self.app.state.sessions._sessions), 1)
+        await self.app.state.sessions.close()
+        self.assertFalse(self.app.state.sessions._sessions)
+        await self.app.state.jobs.close()
+        self.assertEqual((await self.app.state.runtime.inspect(self.snapshot.entries['receiver-a'].config))['outcome'], 'stopped')
+
+    async def test_hardware_connection_failure_is_retained_without_simulator_lifecycle(self):
+        response = await self.post('/api/targets/physical-b/connection', {'action':'connect'})
+        self.assertEqual(response.status_code, 202, response.text)
+        jid = response.json()['result']['id']
+        for _ in range(100):
+            record = (await self.client.get('/api/jobs/'+jid)).json()['result']
+            if record['state'] != 'running': break
+            await asyncio.sleep(.02)
+        self.assertEqual(record['state'], 'failed')
+        rows = (await self.client.get('/api/management')).json()['result']['targets']
+        row = next(r for r in rows if r['name']=='physical-b')
+        self.assertEqual(row['state'], 'disconnected')
+        self.assertEqual(row['job']['id'], jid)
+        self.assertFalse(self.app.state.sessions._sessions)
+
+    async def test_repeated_start_preserves_persistent_connection_and_observation_sends_no_requests(self):
+        await self.job('start')
+        sid = (await self.post('/api/sessions', {'target':'receiver-a','mode':'managed','persistent':True})).json()['result']['id']
+        before = (await self.client.get(f'/api/sessions/{sid}/events')).json()['result']['newest']
+        await self.job('start')
+        for _ in range(3): await self.client.get('/api/management')
+        after = await self.client.get(f'/api/sessions/{sid}/events')
+        self.assertEqual(after.status_code, 200)
+        self.assertEqual(after.json()['result']['newest'], before)
+
+    async def test_real_hardware_connection_reports_remote_loss_and_can_reconnect(self):
+        from simquaro.server import HardwareServer
+        from simquaro.models.fictitious_receiver.model import FictitiousReceiverSimulator
+        model = FictitiousReceiverSimulator(self.snapshot.entries['physical-b'].config.settings)
+        server = HardwareServer(model, '127.0.0.1', 0)
+        await server.start()
+        self.addAsyncCleanup(model.close)
+        self.addAsyncCleanup(server.close)
+        entries = dict(self.snapshot.entries)
+        entries['physical-b'] = replace(entries['physical-b'], config=replace(entries['physical-b'].config, port=server.port))
+        self.store.save(entries, expected_revision=self.snapshot.revision)
+        response = await self.post('/api/sessions', {'target':'physical-b','mode':'managed','persistent':True})
+        self.assertEqual(response.status_code, 200, response.text)
+        rows = (await self.client.get('/api/management')).json()['result']['targets']
+        self.assertEqual(next(r for r in rows if r['name']=='physical-b')['state'], 'connected')
+        await server.close()
+        for _ in range(100):
+            rows = (await self.client.get('/api/management')).json()['result']['targets']
+            if next(r for r in rows if r['name']=='physical-b')['state'] == 'disconnected': break
+            await asyncio.sleep(.01)
+        self.assertEqual(next(r for r in rows if r['name']=='physical-b')['state'], 'disconnected')
+        repeat = await self.post('/api/sessions', {'target':'physical-b','mode':'managed','persistent':True})
+        self.assertNotEqual(repeat.status_code, 200, 'A dead connection must not be reported as a successful Connect')
+
     async def test_foreign_origins_hosts_missing_header_and_oversized_body_reject_before_side_effects(self):
         for headers in ({"Origin": "https://foreign.invalid"}, {"Origin": "null"},
                         {"Host": "foreign.invalid"}, {"Sec-Fetch-Site": "cross-site"},

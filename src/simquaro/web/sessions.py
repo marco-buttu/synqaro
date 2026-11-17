@@ -1,4 +1,4 @@
-"""Per-tab TCP ownership, snapshot binding, and bounded wire evidence."""
+"""Server-owned TCP sessions, snapshot binding, and bounded wire evidence."""
 
 import asyncio
 from collections import deque
@@ -45,6 +45,7 @@ class _Session:
     revision: str
     source: str
     deadline: float
+    persistent: bool = False
     state: str = "connecting"
     client: object = None
     connection: object = None
@@ -89,17 +90,30 @@ class SessionManager:
             session.events.popleft()
             session.total_bytes -= session.sizes.popleft()
 
-    async def connect(self, target, mode):
+    async def connect(self, target, mode, *, persistent=False, allow_busy=False):
         if mode not in ("managed", "line", "raw"):
             raise ValueError("Choose managed, line, or raw mode")
+        if type(persistent) is not bool: raise ValueError("persistent must be a boolean")
         snapshot = await configuration_io(self.store.load)
         entry = ConfigurationService.target(snapshot, target)
         if self._closed: raise ServiceError("SERVER_CLOSING", "Server is shutting down")
-        if self.busy(target): raise ServiceError("TARGET_BUSY", "Wait for this target's job to finish")
+        if self.busy(target) and not allow_busy: raise ServiceError("TARGET_BUSY", "Wait for this target's job to finish")
+        if persistent:
+            for existing in self._sessions.values():
+                if existing.target == target and existing.persistent:
+                    if existing.mode != mode:
+                        raise ServiceError("TARGET_BUSY", "Disconnect the current console before changing its mode")
+                    if existing.state == "connecting":
+                        raise ServiceError("TARGET_BUSY", "Connection is being established; refresh its state")
+                    history = self.events(existing.id, 0)
+                    if history["state"] != "connected":
+                        raise ServiceError("DISCONNECTED", "The connection is closed; disconnect and connect again, or use Reconnect")
+                    return history
         if len(self._sessions) >= 16 or sum(s.target == target for s in self._sessions.values()) >= 4:
             raise ServiceError("SESSION_LIMIT", "Close an unused connection before connecting again")
         session = _Session(secrets.token_urlsafe(24), target, mode, entry.config,
-                           snapshot.revision, snapshot.source, self.clock.monotonic() + 120)
+                           snapshot.revision, snapshot.source, self.clock.monotonic() + 120,
+                           persistent=persistent)
         self._sessions[session.id] = session  # Reserve before any connection await.
         if self._sweeper is None: self._sweeper = asyncio.create_task(self._sweep())
         try:
@@ -189,8 +203,12 @@ class SessionManager:
         session = self._get(sid)
         if type(after) is not int or after < 0: raise ValueError("Cursor must be a nonnegative integer")
         oldest = session.events[0]["cursor"] if session.events else session.sequence + 1
+        state = session.state
+        if state == "connected" and session.client is not None and not session.client.ready:
+            state = "disconnected"
         return {"id": session.id, "target": session.target, "mode": session.mode,
-                "state": session.state, "revision": session.revision, "source": session.source,
+                "state": state, "persistent": session.persistent,
+                "revision": session.revision, "source": session.source,
                 "host": session.config.host, "port": session.config.port,
                 "expected_hardware_id": (session.client.expected_hardware_id if session.client is not None else
                                          getattr(session.config.settings, "hardware_id", None)),
@@ -201,6 +219,10 @@ class SessionManager:
     def heartbeat(self, sid):
         self._get(sid).deadline = self.clock.monotonic() + 120
         return {"lease_seconds": 120}
+
+    def list(self, target):
+        return [{k: v for k, v in self.events(s.id, s.sequence).items() if k != "events"}
+                for s in self._sessions.values() if s.target == target and s.persistent]
 
     def has_target(self, target):
         return any(s.target == target for s in self._sessions.values())
@@ -233,7 +255,8 @@ class SessionManager:
             await self.disconnect(sid)
 
     async def expire(self):
-        for sid in [sid for sid, s in self._sessions.items() if s.deadline <= self.clock.monotonic()]:
+        for sid in [sid for sid, s in self._sessions.items()
+                    if not s.persistent and s.deadline <= self.clock.monotonic()]:
             if sid in self._sessions: await self.disconnect(sid)
 
     async def _sweep(self):

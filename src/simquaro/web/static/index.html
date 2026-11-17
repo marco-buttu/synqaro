@@ -3,31 +3,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Simquaro — Hardware workbench</title>
+  <title>Synqaro — Hardware Console</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/app.js" defer></script>
 </head>
 <body>
-  <header class="masthead"><div><p class="eyebrow">SYNQARO / HARDWARE WORKBENCH</p><h1>Simquaro</h1></div><span class="badge">Local workstation only</span></header>
+  <header class="masthead"><h1>Synqaro — Hardware Console</h1><select id="target-kind" aria-label="Target type"><option value="simulator">Simulators</option><option value="hardware">Real hardware</option></select></header>
   <main>
-    <section class="target-bar" aria-label="Selected target">
-      <div><label for="target">Target</label><select id="target"></select></div>
-      <div><strong id="target-description">Loading configuration…</strong><p id="target-endpoint"></p></div>
-      <button id="reload">Reload inventory</button>
+    <section class="panel management" aria-label="Target management">
+      <h2 id="management-title">Simulator management</h2>
+      <div class="target-bar">
+        <div><label id="target-label" for="target">Target simulator</label><select id="target"></select></div>
+        <div class="buttons"><button id="start">Start</button><button id="stop">Stop</button><button id="restart">Restart</button><button id="refresh-admin">Refresh</button></div>
+      </div>
+      <p id="management-status" class="status" aria-live="polite">Checking current state…</p>
+      <details><summary>Details</summary><ul id="management-details"></ul><p class="hint">Stopping this GUI server stops only its managed simulators. External simulators remain running. Closing the browser tab stops neither simulators nor connections.</p></details>
     </section>
     <div id="notice" role="alert" hidden></div>
-    <nav aria-label="Workbench sections"><a href="#control">01 Control</a><a href="#console">02 Console</a><a href="#tests">03 Tests</a><a href="#configuration">04 Configuration</a></nav>
+    <div class="workspace-selector">
+      <div><label for="workspace">Workspace</label><select id="workspace"><option value="">Choose a workspace</option><option value="communication">Communication</option><option value="tests">Test</option><option value="configuration">Configuration</option></select></div>
+      <div id="tool-target-group" hidden><label id="tool-target-label" for="tool-target">Communication target</label><select id="tool-target"></select></div>
+    </div>
+    <p id="workspace-empty" class="hint" hidden>No active targets available. Start a simulator or connect hardware above.</p>
     <div class="workspace">
-      <section id="control" class="panel">
-        <p class="eyebrow">01 / OPERATE</p><h2>Control</h2>
-        <div id="simulator-controls">
-          <h3>Simulator process</h3><p>Start does not apply saved changes to an existing process. Restart loses its current state.</p>
-          <div class="buttons"><button id="start">Start simulator</button><button id="stop">Stop simulator</button><button id="restart" class="warning">Restart simulator</button><button id="refresh-admin">Refresh process state</button></div>
-          <p id="runtime-state" class="status">Not inspected</p>
-        </div>
+      <section id="control" class="panel" hidden>
+        <h2>Receiver operations</h2>
         <div id="receiver-controls">
-          <h3>Receiver operations <span class="muted">via TCP</span></h3>
-          <p>Connect in Guided mode first. No requests are sent just by opening this page.</p>
           <label for="frequency">Frequency (GHz)<input id="frequency" type="text" inputmode="decimal" value="5.1234565" maxlength="64"></label>
           <div class="buttons"><button id="set-frequency">Set frequency</button><button id="get-frequency">Read frequency</button><button id="general-status">Read receiver status</button></div>
           <div class="buttons"><button id="calibrate">Run calibrate</button><button id="reboot" class="warning">Reboot hardware</button></div>
@@ -53,8 +54,8 @@
           <pre id="fault-state" tabindex="0">Not inspected. Refresh explicitly.</pre>
         </details>
       </section>
-      <section id="console" class="panel">
-        <p class="eyebrow">02 / INSPECT THE WIRE</p><h2>Console</h2>
+      <section id="console" class="panel" hidden>
+        <h2>Console</h2>
         <label for="mode">Console mode</label><select id="mode"><option value="managed">Guided — validated client</option><option value="line">Literal line — append LF</option><option value="raw">Raw bytes — explicit escapes, no LF</option></select>
         <p id="mode-help">Connect sends configuration/status probes; IDs and recovery are handled by the shared client.</p>
         <div class="buttons"><button id="connect" class="primary">Connect</button><button id="disconnect">Disconnect</button></div>
@@ -67,7 +68,7 @@
         <p class="hint">Local receipt times are not firmware measurement times. Event polling only reads server memory.</p>
         <pre id="wire-log" class="wire" tabindex="0" aria-label="Wire evidence">No TCP connection.</pre>
       </section>
-      <section id="tests" class="panel">
+      <section id="tests" class="panel" hidden>
         <p class="eyebrow">03 / VERIFY</p><h2>Tests</h2>
         <p>The same shared checks run against a simulator or compatible hardware. Disconnect all GUI sessions for this target first; isolate other clients yourself.</p>
         <label class="check"><input id="allow-changes" type="checkbox">Allow changes for this run (frequency, procedures, reboot)</label>
@@ -75,10 +76,12 @@
         <p id="job-state" class="status" aria-live="polite">No job submitted</p>
         <pre id="test-report" tabindex="0">Read-only by default. No tests have run.</pre>
       </section>
-      <section id="configuration" class="panel">
+      <section id="configuration" class="panel" hidden>
         <p class="eyebrow">04 / CONFIGURE</p><h2>Configuration</h2>
         <p id="config-path" class="hint"></p><p id="config-source"></p>
         <p id="config-state" class="status">Active settings unknown</p>
+        <p id="runtime-state" class="hint"></p>
+        <button id="reload">Reload inventory</button>
         <p>Editor draft → Save to file → Apply to this simulator. Saving alone never restarts it. Active startup settings are not live property values.</p>
         <form id="config-form"><div class="fields" id="config-fields"></div>
           <div class="buttons"><button id="save-config" type="submit">Save configuration</button><button id="reload-config" type="button">Reload saved configuration</button><button id="apply-config" type="button" class="warning">Apply saved settings</button></div>
@@ -87,7 +90,7 @@
         <details><summary>Active startup settings (verified local process)</summary><pre id="active-config" tabindex="0">Unknown</pre></details>
       </section>
     </div>
-    <footer>Keep the server terminal open. Closing this page closes no simulator; unused TCP sessions expire after 120 seconds. Hardware procedures are never automatically cancelled.</footer>
+    <footer>Keep the server terminal open. Closing this page preserves server-managed connections and simulators. Hardware procedures are never automatically cancelled by disconnecting.</footer>
   </main>
 </body>
 </html>

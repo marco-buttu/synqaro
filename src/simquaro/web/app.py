@@ -187,6 +187,43 @@ def create_app(store, *, runtime_root=None, origin="http://127.0.0.1:8765"):
     @app.get("/api/config")
     async def configuration(): return success(saved(await configuration_io(store.load)))
 
+    @app.get("/api/management")
+    async def management():
+        snapshot = await configuration_io(store.load)
+        limit = asyncio.Semaphore(4)
+        async def observe(entry):
+            name = entry.config.name
+            sessions = app.state.sessions.list(name)
+            row = {"name": name, "kind": entry.kind, "sessions": sessions, "owner": None}
+            if entry.kind == "simulator":
+                async with limit:
+                    result = await app.state.runtime.inspect(entry.config)
+                row["state"] = result["outcome"] if result["ok"] else "unknown"
+                if row["state"] == "running":
+                    token = result.get("status", {}).get("run_token")
+                    row["owner"] = "gui" if app.state.jobs.owns(name, token) else "external"
+                if not result["ok"]: row["error"] = result.get("error")
+            else:
+                row["state"] = "connected" if any(s["state"] == "connected" for s in sessions) else "disconnected"
+            jobs = app.state.jobs.list(name)
+            row["job"] = jobs[-1] if jobs else None
+            return row
+        return success({"targets": await asyncio.gather(*(observe(e) for e in snapshot.entries.values()))})
+
+    @app.post("/api/targets/{name}/connection")
+    async def connection(name: str, request: Request):
+        data = await payload(request, ("action",))
+        _, entry = await target(name)
+        if entry.kind != "hardware": raise ServiceError("FORBIDDEN_TARGET_KIND", "Use simulator lifecycle controls")
+        action = data["action"]
+        if action not in ("connect", "disconnect", "reconnect"):
+            raise ValueError("Choose connect, disconnect or reconnect")
+        async def operate():
+            if action != "connect": await app.state.sessions.disconnect_target(name)
+            if action == "disconnect": return {"state": "disconnected"}
+            return await app.state.sessions.connect(name, "managed", persistent=True, allow_busy=True)
+        return success({"id": app.state.jobs.start(action, name, operate())}, 202)
+
     @app.put("/api/config/{name}")
     async def save_configuration(name: str, request: Request):
         data = await payload(request, ("revision", "record"))
@@ -219,7 +256,7 @@ def create_app(store, *, runtime_root=None, origin="http://127.0.0.1:8765"):
         if action == "apply" and data.get("revision") != snapshot.revision:
             raise ConfigurationError("CONFIG_CONFLICT", "Reload before applying saved settings")
         async def operate():
-            await app.state.sessions.disconnect_target(name)
+            if action != "start": await app.state.sessions.disconnect_target(name)
             runtime = app.state.runtime
             if action == "stop": return await runtime.stop(name)
             # Snapshot pinned before job registration; no reread may retarget this job.
@@ -255,9 +292,9 @@ def create_app(store, *, runtime_root=None, origin="http://127.0.0.1:8765"):
 
     @app.post("/api/sessions")
     async def connect(request: Request):
-        data = await payload(request, ("target", "mode"))
+        data = await payload(request, ("target", "mode"), ("persistent",))
         if type(data["target"]) is not str or type(data["mode"]) is not str: raise ValueError("Target/mode must be strings")
-        return success(await app.state.sessions.connect(data["target"], data["mode"]))
+        return success(await app.state.sessions.connect(data["target"], data["mode"], persistent=data.get("persistent", False)))
 
     @app.post("/api/sessions/{sid}/requests")
     async def submit(sid: str, request: Request):
