@@ -326,12 +326,12 @@ after HTTP startup succeeds. If opening fails, copy the URL manually. For a busy
 port use `simquaro gui --port 8766`; `--no-browser` suppresses opening.
 Launching the GUI does not start a simulator automatically.
 
-1. Select **receiver-a**, click **Start simulator**, and wait for `start: succeeded`.
+1. Select **Simulators**, choose **receiver-a**, click **Start**, and wait for its running state.
    This confirms the local process, not physical-hardware health.
-2. In **Console**, keep **Guided** mode and click **Connect**. This explicitly
-   reads hardware configuration/status. Each tab has its own TCP connection;
-   a second tab can select another target independently.
-3. In **Control**, enter a frequency and click **Set frequency** / **Read frequency**.
+2. Select the **Communication** workspace and **receiver-a**. In **Console**, keep
+   **Guided** mode and click **Connect**. This explicitly reads configuration/status.
+   The connection stays on the server when you close or reload the browser tab.
+3. In **Receiver operations**, enter a frequency and click **Set frequency** / **Read frequency**.
    Inspect the parsed response and actual TX/RX bytes. The receiver applies
    `5.1234565` GHz as `5.123457` GHz; input spelling reaches firmware unchanged.
 4. Click **Run calibrate**, then **Read procedure status**. Explicitly enable
@@ -347,11 +347,12 @@ Launching the GUI does not start a simulator automatically.
    `frequency_read_failure`, then **Activate fault**. Guided frequency reads now
    report an error. **Clear fault** removes the cause. Scheduling uses explicit
    trigger events and occurrence counts; reads/monitoring may consume matching rules.
-7. Click **Disconnect** before **Tests → Run checks**. Read-only is the default.
+7. Click **Disconnect**, select the **Test** workspace, then **Run checks**. Read-only is the default.
    Modifying checks require the checkbox and confirmation for each run. Close
    other GUI connections to that target and isolate external clients yourself.
 
-The four sections share one page, with navigation links. Selecting a target or
+The management panel remains visible while the selected workspace changes.
+Select **Configuration** to edit startup settings. Selecting a target or
 polling event/job displays sends no hardware TCP requests. Physical-hardware
 targets have no simulator process or fault controls.
 
@@ -429,8 +430,9 @@ simquaro stop receiver-a
 Alternatively Ctrl+C in the terminal that started the simulator cleans its owned
 processes. Ctrl+C in the GUI server terminal closes sessions and stops only
 simulator children created by that server, leaving preexisting instances alone.
-Closing a browser tab does not stop the server/simulator. Unused TCP sessions
-expire after 120 seconds; closing TCP never automatically cancels firmware work.
+Closing a browser tab does not stop the server, its persistent GUI connections,
+or simulators. Tabs using the same target share its console connection. Explicit
+disconnect affects that shared connection but never automatically cancels firmware work.
 If stop needs escalation it handles that internally; no `--force` is needed.
 After a crash use normal start/status/stop/restart, not manual socket/lock deletion.
 

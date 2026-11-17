@@ -13,6 +13,7 @@ class JobManager:
     def __init__(self):
         self._records, self._tasks = {}, {}
         self._monitors = set()
+        self._owned = {}
         self._closed = False
 
     def busy(self, target):
@@ -67,12 +68,19 @@ class JobManager:
     def own(self, runtime, started):
         """Register synchronously, before callers do any more cancellable work."""
         if started is None or started.child is None: return
+        child = started.child
+        self._owned[child.name] = child.run_token
         monitor = asyncio.create_task(runtime.supervise([started]))
         self._monitors.add(monitor)
         def finished(task):
             self._monitors.discard(task)
+            if self._owned.get(child.name) == child.run_token:
+                self._owned.pop(child.name, None)
             if not task.cancelled(): task.exception()  # Retrieve any supervision failure.
         monitor.add_done_callback(finished)
+
+    def owns(self, name, run_token):
+        return run_token is not None and self._owned.get(name) == run_token
 
     async def close(self):
         self._closed = True

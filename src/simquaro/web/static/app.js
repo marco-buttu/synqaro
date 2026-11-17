@@ -6,6 +6,8 @@ const text = (id, value) => { $(id).textContent = value; };
 let targets = [], config = null, current = null, session = null, cursor = 0;
 let wire = [], jobId = null, working = false, polling = false, monitoring = false;
 let faultCatalog = [];
+let observations = [], observing = false;
+const submissionErrors = new Map();
 
 async function api(path, method = "GET", body) {
   const controller = new AbortController();
@@ -43,6 +45,7 @@ async function action(operation) {
   finally {
     working = false;
     for (const control of document.querySelectorAll("button,select,input,textarea")) control.disabled = false;
+    availability();
   }
 }
 function button(id, operation) { $(id).addEventListener("click", () => action(operation)); }
@@ -66,20 +69,22 @@ function addWire(message) {
 async function loadInventory(preferred) {
   const [inventory, saved] = await Promise.all([api("/targets"), api("/config")]);
   targets = inventory.targets; config = saved;
-  selectOptions($("target"), targets.map(t => [t.name, `${t.name} · ${t.kind}`]));
-  if (!targets.length) throw new Error("No targets configured. Add an instance to the configuration file, then Reload inventory.");
-  $("target").value = targets.some(t => t.name === preferred) ? preferred : targets[0].name;
-  await showTarget();
+  const filtered = targets.filter(t => t.kind === $("target-kind").value);
+  selectOptions($("target"), [...filtered.map(t => [t.name, t.name]), ["all", "All"]]);
+  $("target").value = filtered.some(t => t.name === preferred) || preferred === "all" ? preferred : (filtered[0]?.name || "all");
+  await refreshManagement();
+  // An explicit inventory reload must refresh the editor and its revision together.
+  if (current) renderConfig();
 }
 
 async function showTarget() {
-  current = targets.find(t => t.name === $("target").value);
+  current = targets.find(t => t.name === $("tool-target").value) || null;
+  session = null;
   wire = []; cursor = 0;
+  if (!current) { renderPanels(); return; }
   text("wire-log", "No TCP connection for " + current.name + ".");
   text("response", "No request sent to " + current.name + ".");
   jobId = null; $("monitor").checked = false;
-  renderTargetHeader();
-  $("simulator-controls").hidden = current.kind !== "simulator";
   $("fault-controls").hidden = current.kind !== "simulator";
   $("apply-config").hidden = current.kind !== "simulator";
   $("receiver-controls").hidden = current.model !== "fictitious_receiver";
@@ -89,18 +94,120 @@ async function showTarget() {
   text("test-report", "Read-only by default. Inspect recent jobs to find a previous run.");
   renderConfig();
   await refreshAdmin();
+  await restoreSession();
+  renderPanels();
 }
 
-function renderTargetHeader() {
-  text("target-description", `${current.kind === "simulator" ? "Simulator" : "Physical hardware"} / ${current.model}`);
-  text("target-endpoint", `Saved endpoint (editor snapshot): ${current.host}:${current.port} · expected identity: ${current.receiver?.hardware_id || "model-defined"}`);
+function kindTargets() { return targets.filter(t => t.kind === $("target-kind").value); }
+function selectedTargets() {
+  return kindTargets().filter(t => $("target").value === "all" || t.name === $("target").value);
+}
+function availability() {
+  const none = !selectedTargets().length;
+  for (const id of ["start", "stop", "restart"]) $(id).disabled = working || none;
+  for (const id of ["set-frequency", "get-frequency", "general-status", "calibrate", "reboot", "scan", "procedure-status", "cancel", "monitor"])
+    $(id).disabled = working || !session || session.mode !== "managed" || session.state !== "connected";
+  $("connect").disabled = working || !current;
+  $("disconnect").disabled = working || !session;
+}
+function renderPanels() {
+  const panel = $("workspace").value;
+  for (const id of ["console", "control", "tests", "configuration"])
+    $(id).hidden = !current || (panel === "communication" ? !["console", "control"].includes(id) : panel !== id);
+  $("tool-target-group").hidden = !panel;
+  text("tool-target-label", panel === "communication" ? "Communication target" : "Target");
+  $("workspace-empty").hidden = !panel || !!current;
+  if (panel !== "communication") $("monitor").checked = false;
+  availability();
+}
+async function syncTools(preferred) {
+  let choices = kindTargets();
+  if ($("workspace").value === "communication") choices = choices.filter(t => observations.some(r =>
+    r.name === t.name && (r.kind === "simulator" ? r.state === "running" :
+      r.state === "connected" || t.name === current?.name)));
+  const wanted = preferred || current?.name || $("target").value;
+  selectOptions($("tool-target"), choices.map(t => [t.name,
+    $("workspace").value === "communication" && t.kind === "hardware" &&
+      observations.find(r => r.name === t.name)?.state !== "connected" ? `${t.name} (disconnected)` : t.name]));
+  $("tool-target").value = choices.some(t => t.name === wanted) ? wanted : (choices[0]?.name || "");
+  if (current?.name !== ($("tool-target").value || undefined)) await showTarget();
+  else { await restoreSession(); renderPanels(); }
+}
+async function restoreSession() {
+  if (!current) return;
+  const observed = observations.find(r => r.name === current.name)?.sessions?.[0];
+  if (!observed) {
+    session = null; text("connection-state", "disconnected"); text("session-revision", "");
+    return;
+  }
+  if (session?.id !== observed.id) {
+    session = observed; cursor = 0; wire = [];
+    $("mode").value = observed.mode; updateMode();
+    consume(await api("/sessions/" + observed.id + "/events"));
+  } else session.state = observed.state;
+}
+function renderManagement() {
+  const simulator = $("target-kind").value === "simulator";
+  text("management-title", simulator ? "Simulator management" : "Connection");
+  text("target-label", simulator ? "Target simulator" : "Target hardware");
+  for (const [id, caption] of [["start", simulator ? "Start" : "Connect"], ["stop", simulator ? "Stop" : "Disconnect"], ["restart", simulator ? "Restart" : "Reconnect"]]) text(id, caption);
+  const names = selectedTargets().map(t => t.name);
+  const rows = observations.filter(r => names.includes(r.name));
+  const relevantJob = r => r.job && ["start", "stop", "restart", "apply", "connect", "disconnect", "reconnect"].includes(r.job.kind) ? r.job : null;
+  function detail(r) {
+    const job = relevantJob(r);
+    const error = submissionErrors.get(r.name) || r.error || (job?.state === "failed" ? job.error || job.result : null);
+    const running = job?.state === "running";
+    const active = ["running", "connected"].includes(r.state);
+    const icon = error || r.state === "unknown" ? "✕" : running ? "◌" : active ? "✓" : "○";
+    const label = running ? `${job.kind}: running…` : r.state;
+    return {error, running, active, icon, message: `${icon} ${r.name} ${simulator ? "simulator" : "hardware"}: ${label}` +
+      (r.owner ? ` (${r.owner === "gui" ? "managed by GUI" : "external"})` : "") +
+      (error ? ` — ${typeof error === "string" ? error : pretty(error)}` : "")};
+  }
+  const details = $("management-details"); details.replaceChildren();
+  for (const row of rows) {
+    const state = detail(row), li = document.createElement("li"); li.textContent = state.message;
+    li.className = state.error ? "failure" : state.active ? "success" : ""; details.append(li);
+  }
+  const failed = rows.filter(r => detail(r).error || r.state === "unknown").length;
+  const pending = rows.filter(r => detail(r).running).length;
+  const allRows = observations.filter(r => r.kind === $("target-kind").value);
+  const gui = allRows.filter(r => r.state === "running" && r.owner === "gui").length;
+  const external = allRows.filter(r => r.state === "running" && r.owner === "external").length;
+  const connected = allRows.filter(r => r.state === "connected").length;
+  const summary = simulator ? `${gui} active managed by GUI · ${external} active externally` : `${connected}/${allRows.length} connected`;
+  text("management-status", (rows.length === 1 && $("target").value !== "all" ? detail(rows[0]).message + " · " : "") +
+    summary + (pending ? ` · ${pending} in progress` : "") + (failed ? ` · ${failed} failed — see Details` : ""));
+  $("management-status").classList.toggle("failure", failed > 0);
+  $("management-status").classList.toggle("success", failed === 0 && gui + external + connected > 0);
+}
+async function refreshManagement() {
+  observations = (await api("/management")).targets;
+  renderManagement(); await syncTools();
+}
+async function manage(operation) {
+  const selected = selectedTargets();
+  if (!selected.length) return;
+  const simulator = $("target-kind").value === "simulator";
+  if (operation === "restart" && !confirm(simulator ? "Restart the selected simulators? Current state and fault schedules will be lost." : "Reconnect the selected hardware? Current TCP connections will close.")) return;
+  text("management-status", `◌ ${operation}: 0/${selected.length} submitted…`);
+  let submitted = 0;
+  for (const target of selected) {
+    submissionErrors.delete(target.name);
+    const verb = simulator ? operation : ({start:"connect", stop:"disconnect", restart:"reconnect"})[operation];
+    try {
+      await api("/targets/" + encodeURIComponent(target.name) + (simulator ? "/lifecycle" : "/connection"), "POST", {action:verb});
+    } catch (error) { submissionErrors.set(target.name, error.message); }
+    text("management-status", `◌ ${verb}: ${++submitted}/${selected.length} submitted…`);
+  }
+  await refreshManagement();
 }
 
 function renderConfig() {
   const saved = config.instances.find(t => t.name === current.name);
   if (!saved) throw new Error("Target removed from saved configuration; reload inventory.");
   current = {...current, ...saved};
-  renderTargetHeader();
   text("config-path", config.path + " · revision " + config.revision);
   text("config-source", config.source === "builtin" ? "Built-in defaults — not saved" : "Saved configuration file");
   text("saved-config", pretty(saved));
@@ -126,6 +233,7 @@ function renderConfig() {
 }
 
 async function refreshAdmin() {
+  if (!current) return;
   if (current.kind !== "simulator") {
     text("config-state", "Physical hardware: active simulator settings not applicable"); text("active-config", "Not applicable"); return;
   }
@@ -168,6 +276,8 @@ async function disconnect() {
   const previous = session;
   const final = await api("/sessions/" + previous.id, "DELETE", {});
   consume(final); session = null; cursor = 0;
+  const row = observations.find(r => r.name === previous.target);
+  if (row) row.sessions = row.sessions.filter(s => s.id !== previous.id);
   text("connection-state", "disconnected — hardware procedures were not cancelled");
   text("session-revision", "");
 }
@@ -179,6 +289,7 @@ function updateMode() {
     "Connect sends zero bytes. Send appends LF to literal ASCII text. No probes, IDs, polling or recovery.");
 }
 function consume(history) {
+  if (session?.id === history.id) session.state = history.state;
   if (history.gap) addWire("[history gap: older events were dropped]");
   for (const event of history.events) {
     if (event.cursor <= cursor) continue;
@@ -193,13 +304,15 @@ function consume(history) {
     (config.revision !== history.revision ? "Newer saved settings are loaded. This connection is not retargeted; reconnect explicitly." : "Save never retargets this connection."));
 }
 async function connect() {
-  if (session) await disconnect();
-  const history = await api("/sessions", "POST", {target:current.name, mode:$("mode").value});
-  session = {id:history.id, target:current.name, revision:history.revision, mode:history.mode}; cursor = 0;
+  if (!current) throw new Error("Select an active target first.");
+  const history = await api("/sessions", "POST", {target:current.name, mode:$("mode").value, persistent:true});
+  session = {id:history.id, target:current.name, revision:history.revision, mode:history.mode, state:history.state}; cursor = 0;
   consume(history);
+  const row = observations.find(r => r.name === current.name);
+  if (row) row.sessions = [history];
 }
 async function request(verb, fields = {}) {
-  if (!session || session.mode !== "managed") throw new Error("Connect in Guided mode to use receiver operations.");
+  if (!session || session.mode !== "managed") throw new Error("Connect the console before sending receiver commands.");
   const response = await api("/sessions/" + session.id + "/requests", "POST", {verb, fields});
   text("response", pretty(response));
   return response;
@@ -283,8 +396,8 @@ async function poll() {
 }
 
 button("connect", connect); button("disconnect", disconnect);
-button("start", () => lifecycle("start")); button("stop", () => lifecycle("stop")); button("restart", () => lifecycle("restart"));
-button("refresh-admin", refreshAdmin);
+button("start", () => manage("start")); button("stop", () => manage("stop")); button("restart", () => manage("restart"));
+button("refresh-admin", async () => { await refreshManagement(); await refreshAdmin(); });
 button("set-frequency", () => request("set", {name:"frequency", value:number("frequency"), unit:"GHz"}));
 button("get-frequency", () => request("get", {name:"frequency"})); button("general-status", () => request("status"));
 button("calibrate", () => { $("procedure").value = "calibrate"; return request("run", {name:"calibrate"}); });
@@ -296,7 +409,7 @@ button("send-literal", async () => {
   await api("/sessions/" + session.id + "/requests", "POST", {text:$("literal").value});
 });
 button("clear-log", () => { wire = []; text("wire-log", "Display cleared; server evidence is retained within its limits."); });
-button("reload", async () => { if (session) await disconnect(); await loadInventory(current?.name); });
+button("reload", () => loadInventory(current?.name));
 button("reload-config", reloadConfig); button("apply-config", () => lifecycle("apply")); button("run-tests", runTests);
 button("recent-jobs", async () => { const result = await api(path() + "/jobs"); text("test-report", pretty(result)); });
 button("refresh-faults", refreshFaults);
@@ -309,20 +422,28 @@ $("mode").addEventListener("change", () => action(async () => {
   catch (error) { if (session) $("mode").value = session.mode; throw error; }
 }));
 $("target").addEventListener("change", () => action(async () => {
-  try { await disconnect(); await showTarget(); }
-  catch (error) { if (current) $("target").value = current.name; throw error; }
+  renderManagement(); await syncTools($("target").value === "all" ? undefined : $("target").value);
 }));
+$("target-kind").addEventListener("change", () => action(async () => {
+  // Selecting a category observes existing resources; it never connects hardware.
+  localStorage.setItem("synqaro-target-kind", $("target-kind").value);
+  session = null; current = null; await loadInventory();
+}));
+$("workspace").addEventListener("change", () => action(() => syncTools()));
+$("tool-target").addEventListener("change", () => action(showTarget));
 $("monitor").addEventListener("change", () => {
   if ($("monitor").checked && (!session || session.mode !== "managed")) {
     $("monitor").checked = false; notice(new Error("Connect in Guided mode before enabling monitoring."));
   }
 });
-window.addEventListener("pagehide", () => {
-  if (session) fetch("/api/sessions/" + session.id, {method:"DELETE", keepalive:true,
-    headers:{"Content-Type":"application/json", "X-Simquaro-Client":"1"}, body:"{}"}).catch(() => {});
-});
 setInterval(poll, 500);
 setInterval(() => {
-  if (session) api("/sessions/" + session.id + "/heartbeat", "POST", {}).catch(notice);
-}, 10000);
+  if (working || observing) return;
+  observing = true;
+  refreshManagement().catch(error => {
+    text("management-status", "State unavailable — check the GUI server and Refresh. Previous observations are not current.");
+    notice(error);
+  }).finally(() => { observing = false; });
+}, 1000);
+if (localStorage.getItem("synqaro-target-kind") === "hardware") $("target-kind").value = "hardware";
 action(() => loadInventory());

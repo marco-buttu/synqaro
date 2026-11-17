@@ -123,23 +123,42 @@ separate operations; general hot reload is not available.
 one worker, no reload/proxy trust/CORS. It prints its URL after HTTP startup,
 then attempts to open the browser; it starts no simulators implicitly. Busy ports
 produce a corrective command and never cause another listener to be killed.
-The page has Control, Console, Tests and Configuration sections. No CLI subprocess
-is used: protocol operations use the production client or shared raw TCP transport.
+The page is titled **Synqaro — Hardware Console**. Select **Simulators** or
+**Real hardware** in the header. The management panel always remains visible:
+select a single target or **All** and use Start/Stop/Restart for simulators or
+Connect/Disconnect/Reconnect for hardware. Refresh observes state without sending
+hardware commands. Simulator counts distinguish processes managed by this GUI
+server from external processes using verified run identity. Unknown state is
+reported separately; a running simulator process is not proof of hardware health.
 
-Each tab owns its own session. Guided mode uses normal client bootstrap/recovery;
-line/raw mode sends no probes, IDs, hidden polling or retries. Changing target/mode
-disconnects first. Explicit monitoring sends procedure status every 500 ms; normal
-event/job polling reads only server memory. Administration/fault refresh queries
-local simulator control, not hardware TCP.
+Choose **Communication**, **Test**, or **Configuration** to display its tools.
+Communication lists running simulators or connected hardware. The selected hardware
+remains visible as disconnected if its connection closes, so you can reconnect or
+change console mode. The other panels
+also allow selecting configured, inactive targets. No CLI subprocess is used:
+protocol operations use the production client or shared raw TCP transport.
 
-Limits: 16 sessions total/four per target, 120-second lease and 10-second browser
-heartbeat, 256 events/1 MiB per session with cursor-gap markers; 16 active jobs,
+GUI connections belong to the server and survive browser closure/reload. Tabs
+using the same target share its persistent console connection and bounded evidence.
+Disconnect and mode changes affect that shared connection. Selecting another
+target or workspace does not close it. Guided mode uses normal client bootstrap/
+recovery; line/raw mode sends no probes, IDs, hidden polling or retries. Explicit
+monitoring sends procedure status every 500 ms while enabled in Communication;
+normal event/job polling reads server memory. Management polling queries local
+simulator control, not hardware TCP. A server restart never silently reconnects hardware.
+
+Limits: 16 sessions total/four per target, one persistent GUI connection per target,
+256 events/1 MiB per session with cursor-gap markers; 16 active jobs,
 64 retained completed reports, 1 MiB per report. No unbounded queue or permanent
 job log. Checks use a dedicated client, require other GUI connections closed and
 need per-run authorization to mutate. External-client isolation is up to the user.
 Physical targets reject simulator administration server-side as well as hiding it.
 
-Closing a tab leaves the server/simulator running. Ctrl+C closes sessions and
+Legacy API sessions created without `persistent=true` retain their 120-second
+heartbeat lease. Persistent GUI sessions last until explicit disconnect or server
+shutdown; no heartbeat is required to keep them alive.
+
+Closing a tab leaves server connections and simulators running. Ctrl+C closes sessions and
 stops only server-created children with verified ownership; preexisting instances
 remain running. After a server crash use normal `status`, `stop` or `restart`,
 not manual socket/lock deletion. TCP closure never implicitly cancels firmware work.

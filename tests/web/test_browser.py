@@ -2,6 +2,8 @@
 
 from dataclasses import replace
 import json
+import os
+import re
 from pathlib import Path
 import select
 import signal
@@ -50,7 +52,8 @@ class BrowserTests(unittest.TestCase):
         self.server_log = tempfile.TemporaryFile()
         self.addCleanup(self.server_log.close)
         self.server = subprocess.Popen([sys.executable,"-m","simquaro","--json","--config",str(self.store.path),
-            "gui","--port",str(port),"--no-browser"], stdout=subprocess.PIPE, stderr=self.server_log)
+            "gui","--port",str(port),"--no-browser"], stdout=subprocess.PIPE, stderr=self.server_log,
+            env={**os.environ, "XDG_RUNTIME_DIR": self.temp.name})
         self.addCleanup(self.stop_server)
         ready, _, _ = select.select([self.server.stdout], [], [], 8)
         self.assertTrue(ready, "GUI did not report ready")
@@ -63,7 +66,76 @@ class BrowserTests(unittest.TestCase):
         self.errors = []
         self.page.on("pageerror", lambda error: self.errors.append(str(error)))
         self.page.goto(self.url)
-        expect(self.page.get_by_role("heading", name="Simquaro", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("heading", name="Synqaro — Hardware Console", exact=True)).to_be_visible()
+
+    def test_management_panels_all_and_reopening_preserve_server_connections(self):
+        expect(self.page.locator('#console')).not_to_be_visible()
+        expect(self.page.locator('#tests')).not_to_be_visible()
+        expect(self.page.locator('#configuration')).not_to_be_visible()
+        self.page.get_by_label('Target simulator', exact=True).select_option('all')
+        self.page.get_by_role('button', name='Start', exact=True).click()
+        expect(self.page.locator('#management-status')).to_contain_text('2 active managed by GUI', timeout=10000)
+        self.page.get_by_label('Workspace', exact=True).select_option('communication')
+        expect(self.page.locator('#console')).to_be_visible()
+        expect(self.page.locator('#tests')).not_to_be_visible()
+        self.page.get_by_label('Communication target', exact=True).select_option('receiver-a')
+        self.page.get_by_role('button', name='Connect', exact=True).click()
+        expect(self.page.locator('#connection-state')).to_contain_text(re.compile("^connected"))
+        sid = self.page.evaluate('session.id')
+        self.page.close()
+        self.page = self.context.new_page()
+        self.page.goto(self.url)
+        expect(self.page.locator('#management-status')).to_contain_text('2 active managed by GUI', timeout=8000)
+        self.page.get_by_label('Workspace', exact=True).select_option('communication')
+        expect(self.page.locator('#connection-state')).to_contain_text(re.compile("^connected"))
+        self.assertEqual(self.page.evaluate('session.id'), sid)
+        self.page.get_by_label('Workspace', exact=True).select_option('configuration')
+        expect(self.page.locator('#console')).not_to_be_visible()
+        self.page.get_by_label('Initial frequency (GHz)', exact=True).fill('6')
+        self.page.get_by_role('button', name='Refresh', exact=True).click()
+        expect(self.page.get_by_label('Initial frequency (GHz)', exact=True)).to_have_value('6')
+        self.page.get_by_label('Workspace', exact=True).select_option('tests')
+        expect(self.page.locator('#tests')).to_be_visible()
+        expect(self.page.locator('#configuration')).not_to_be_visible()
+        self.page.get_by_label('Target type', exact=True).select_option('hardware')
+        expect(self.page.get_by_label('Target hardware', exact=True)).to_have_value('physical-c')
+        expect(self.page.get_by_role('button', name='Start', exact=True)).not_to_be_visible()
+        self.page.get_by_label('Target hardware', exact=True).select_option('all')
+        self.page.locator('#start').click()
+        expect(self.page.locator('#management-status')).to_contain_text('1 failed', timeout=8000)
+        self.page.get_by_text('Details', exact=True).click()
+        expect(self.page.locator('#management-details')).to_contain_text('physical-c')
+        self.page.screenshot(path='/tmp/synqaro-management-hardware.png', full_page=True)
+
+    def test_inventory_reload_refreshes_editor_with_revision(self):
+        self.page.get_by_label('Workspace', exact=True).select_option('configuration')
+        snapshot = self.store.load()
+        entry = snapshot.entries['receiver-a']
+        entries = dict(snapshot.entries)
+        entries['receiver-a'] = replace(entry, config=replace(entry.config,
+            settings=replace(entry.config.settings, initial_frequency=7)))
+        self.store.save(entries, expected_revision=snapshot.revision)
+        self.page.get_by_role('button', name='Reload inventory', exact=True).click()
+        expect(self.page.get_by_label('Initial frequency (GHz)', exact=True)).to_have_value('7')
+
+    def test_hardware_console_remains_available_after_mode_disconnect(self):
+        self.start_and_connect()
+        snapshot = self.store.load()
+        entries = dict(snapshot.entries)
+        entries['physical-c'] = replace(entries['physical-c'], config=replace(
+            entries['physical-c'].config, port=entries['receiver-a'].config.port))
+        entries['receiver-a'] = replace(entries['receiver-a'], config=replace(
+            entries['receiver-a'].config, port=free_port()))
+        self.store.save(entries, expected_revision=snapshot.revision)
+        self.page.get_by_label('Target type', exact=True).select_option('hardware')
+        self.page.locator('#start').click()
+        expect(self.page.locator('#management-status')).to_contain_text('1/1 connected', timeout=8000)
+        expect(self.page.locator('#console')).to_be_visible()
+        self.page.get_by_label('Console mode', exact=True).select_option('raw')
+        expect(self.page.locator('#management-status')).to_contain_text('0/1 connected', timeout=8000)
+        expect(self.page.locator('#console')).to_be_visible()
+        self.page.locator('#connect').click()
+        expect(self.page.locator('#connection-state')).to_contain_text('connected · raw')
 
     def stop_server(self):
         if self.server.poll() is None: self.server.send_signal(signal.SIGINT)
@@ -73,10 +145,11 @@ class BrowserTests(unittest.TestCase):
             self.server.communicate(timeout=3)
 
     def start_and_connect(self):
-        self.page.get_by_role("button", name="Start simulator", exact=True).click()
-        expect(self.page.locator("#job-state")).to_contain_text("succeeded", timeout=8000)
+        self.page.get_by_role("button", name="Start", exact=True).click()
+        expect(self.page.locator("#management-status")).to_contain_text("1 active managed by GUI", timeout=8000)
+        self.page.get_by_label("Workspace", exact=True).select_option("communication")
         self.page.get_by_role("button", name="Connect", exact=True).click()
-        expect(self.page.locator("#connection-state")).to_contain_text("connected")
+        expect(self.page.locator("#connection-state")).to_contain_text(re.compile("^connected"))
         self.assertEqual(self.page.get_by_label("Console mode", exact=True).count(), 1,
                          self.page.locator("label").all_text_contents())
 
@@ -93,12 +166,13 @@ class BrowserTests(unittest.TestCase):
         expect(self.page.locator("#response")).to_contain_text("calibrate")
         other = self.context.new_page()
         other.goto(self.url)
-        other.get_by_label("Target", exact=True).select_option("receiver-b")
-        other.get_by_role("button", name="Start simulator", exact=True).click()
-        expect(other.locator("#job-state")).to_contain_text("succeeded", timeout=8000)
+        other.get_by_label("Target simulator", exact=True).select_option("receiver-b")
+        other.get_by_role("button", name="Start", exact=True).click()
+        expect(other.locator("#management-status")).to_contain_text("2 active managed by GUI", timeout=8000)
+        other.get_by_label("Workspace", exact=True).select_option("communication")
         other.get_by_role("button", name="Connect", exact=True).click()
-        expect(other.locator("#connection-state")).to_contain_text("connected")
-        expect(self.page.locator("#connection-state")).to_contain_text("connected")
+        expect(other.locator("#connection-state")).to_contain_text(re.compile("^connected"))
+        expect(self.page.locator("#connection-state")).to_contain_text(re.compile("^connected"))
         self.assertEqual(self.page.get_by_label("Console mode", exact=True).count(), 1,
                          self.page.locator("label").all_text_contents())
         self.page.get_by_label("Console mode", exact=True).select_option("raw")
@@ -124,12 +198,13 @@ class BrowserTests(unittest.TestCase):
         self.page.get_by_role("button", name="Reboot hardware", exact=True).click()
         expect(self.page.locator("#response")).to_contain_text("accepted")
         self.page.get_by_role("button", name="Disconnect", exact=True).click()
+        self.page.get_by_label("Workspace", exact=True).select_option("tests")
         self.page.get_by_label("Allow changes for this run", exact=False).check()
         self.page.once("dialog", lambda dialog: dialog.accept())
         self.page.get_by_role("button", name="Run checks", exact=True).click()
         expect(self.page.locator("#test-report")).to_contain_text('"passed": 10', timeout=15000)
-        self.page.get_by_role("button", name="Stop simulator", exact=True).click()
-        expect(self.page.locator("#job-state")).to_contain_text("stop: succeeded", timeout=8000)
+        self.page.get_by_role("button", name="Stop", exact=True).click()
+        expect(self.page.locator("#management-status")).to_contain_text("0 active managed by GUI", timeout=8000)
         self.assertEqual(self.errors, [])
 
     def test_scheduled_fault_waits_for_explicit_hardware_request(self):
@@ -155,10 +230,11 @@ class BrowserTests(unittest.TestCase):
         endpoint = self.snapshot.entries["receiver-b"].config.port
         other = self.context.new_page()
         other.goto(self.url)
-        other.get_by_label("Target", exact=True).select_option("receiver-b")
-        other.get_by_role("button", name="Start simulator", exact=True).click()
-        expect(other.locator("#job-state")).to_contain_text("start: succeeded", timeout=8000)
-        expect(other.locator("#runtime-state")).to_contain_text("Process: running")
+        other.get_by_label("Target simulator", exact=True).select_option("receiver-b")
+        other.get_by_role("button", name="Start", exact=True).click()
+        expect(other.locator("#management-status")).to_contain_text("2 active managed by GUI", timeout=8000)
+        other.get_by_label("Workspace", exact=True).select_option("configuration")
+        self.page.get_by_label("Workspace", exact=True).select_option("configuration")
         # This page saves a new endpoint and configured identity for receiver-a.
         self.page.get_by_label("Saved TCP port", exact=True).fill(str(endpoint))
         self.page.get_by_label("Expected hardware identity", exact=True).fill("saved-identity-two")
@@ -171,8 +247,9 @@ class BrowserTests(unittest.TestCase):
         self.page.get_by_label("Saved TCP port", exact=True).fill(str(endpoint))
         self.page.get_by_label("Expected hardware identity", exact=True).fill("saved-identity-two")
         self.page.get_by_role("button", name="Save configuration", exact=True).click()
-        expect(self.page.locator("#target-endpoint")).to_contain_text(str(endpoint))
-        expect(self.page.locator("#target-endpoint")).to_contain_text("saved-identity-two")
+        expect(self.page.get_by_label("Saved TCP port", exact=True)).to_have_value(str(endpoint))
+        expect(self.page.get_by_label("Expected hardware identity", exact=True)).to_have_value("saved-identity-two")
+        self.page.get_by_label("Workspace", exact=True).select_option("communication")
         self.page.get_by_label("Console mode", exact=True).select_option("raw")
         self.page.get_by_role("button", name="Connect", exact=True).click()
         expect(self.page.locator("#session-revision")).to_contain_text(f"127.0.0.1:{endpoint}")
@@ -180,25 +257,26 @@ class BrowserTests(unittest.TestCase):
         self.page.get_by_role("button", name="Disconnect", exact=True).click()
         # Other tab changes identity; this page must show the snapshot actually
         # used by Connect, not its stale editor/header.
-        other.get_by_label("Target", exact=True).select_option("receiver-a")
+        other.get_by_label("Target simulator", exact=True).select_option("receiver-a")
         other.get_by_role("button", name="Reload saved configuration", exact=True).click()
         other.get_by_label("Expected hardware identity", exact=True).fill("saved-identity-three")
         other.get_by_role("button", name="Save configuration", exact=True).click()
-        expect(other.locator("#target-endpoint")).to_contain_text("saved-identity-three")
+        expect(other.get_by_label("Expected hardware identity", exact=True)).to_have_value("saved-identity-three")
         self.page.get_by_role("button", name="Connect", exact=True).click()
         expect(self.page.locator("#session-revision")).to_contain_text("saved-identity-three")
         self.assertEqual(self.errors, [])
 
     def test_finished_job_observation_does_not_replace_an_unsaved_editor_draft(self):
         self.start_and_connect()
+        self.page.get_by_label("Workspace", exact=True).select_option("configuration")
         self.page.get_by_label("Initial frequency (GHz)", exact=True).fill("6")
-        self.page.get_by_role("button", name="Stop simulator", exact=True).click()
-        expect(self.page.locator("#job-state")).to_contain_text("stop: succeeded", timeout=8000)
-        expect(self.page.locator("#runtime-state")).to_contain_text("Process: stopped")
+        self.page.get_by_role("button", name="Stop", exact=True).click()
+        expect(self.page.locator("#management-status")).to_contain_text("0 active managed by GUI", timeout=8000)
         expect(self.page.get_by_label("Initial frequency (GHz)", exact=True)).to_have_value("6")
 
     def test_configuration_save_apply_and_read_only_checks(self):
         self.start_and_connect()
+        self.page.get_by_label("Workspace", exact=True).select_option("configuration")
         self.page.get_by_label("Initial frequency (GHz)", exact=True).fill("6")
         self.page.get_by_role("button", name="Save configuration", exact=True).click()
         expect(self.page.locator("#config-state")).to_contain_text("Pending")
@@ -206,7 +284,7 @@ class BrowserTests(unittest.TestCase):
         self.page.get_by_role("button", name="Apply saved settings", exact=True).click()
         expect(self.page.locator("#job-state")).to_contain_text("apply: succeeded", timeout=8000)
         expect(self.page.locator("#config-state")).to_contain_text("In sync")
-        expect(self.page.locator("#connection-state")).to_contain_text("disconnected")
+        self.page.get_by_label("Workspace", exact=True).select_option("tests")
         self.page.get_by_role("button", name="Run checks", exact=True).click()
         expect(self.page.locator("#test-report")).to_contain_text('"passed": 5', timeout=8000)
         expect(self.page.locator("#test-report")).to_contain_text('"skipped": 5')
@@ -224,11 +302,11 @@ class BrowserTests(unittest.TestCase):
         self.page.get_by_role("button", name="Read frequency", exact=True).click()
         expect(self.page.locator("#response")).to_contain_text("FREQUENCY_READ_FAILED")
         self.page.get_by_role("button", name="Clear fault", exact=True).click()
-        self.assertEqual(self.page.get_by_label("Target", exact=True).count(), 1,
+        self.assertEqual(self.page.get_by_label("Target simulator", exact=True).count(), 1,
                          self.page.locator("label").all_text_contents())
-        self.page.get_by_label("Target", exact=True).select_option("physical-c")
-        expect(self.page.get_by_role("button", name="Start simulator", exact=True)).not_to_be_visible()
-        expect(self.page.locator("#response")).to_contain_text("No request sent to physical-c")
+        self.page.get_by_label("Target type", exact=True).select_option("hardware")
+        expect(self.page.get_by_role("button", name="Start", exact=True)).not_to_be_visible()
+        expect(self.page.locator("#workspace-empty")).to_be_visible()
         self.page.set_viewport_size({"width":390,"height":844})
         self.page.screenshot(path="/tmp/simquaro-gui-narrow.png", full_page=True)
         overflowing = self.page.evaluate("""Array.from(document.querySelectorAll('*')).filter(e =>
