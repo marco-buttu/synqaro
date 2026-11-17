@@ -131,7 +131,8 @@ hardware commands. Simulator counts distinguish processes managed by this GUI
 server from external processes using verified run identity. Unknown state is
 reported separately; a running simulator process is not proof of hardware health.
 
-Choose **Communication**, **Test**, or **Configuration** to display its tools.
+In the **Workspace** panel, click **Communication**, **Test**, or **Configuration**
+to display its tools. The selected button is highlighted; initially none is selected.
 Communication lists running simulators or connected hardware. The selected hardware
 remains visible as disconnected if its connection closes, so you can reconnect or
 change console mode. The other panels

@@ -20,11 +20,16 @@
       <details><summary>Details</summary><ul id="management-details"></ul><p class="hint">Stopping this GUI server stops only its managed simulators. External simulators remain running. Closing the browser tab stops neither simulators nor connections.</p></details>
     </section>
     <div id="notice" role="alert" hidden></div>
-    <div class="workspace-selector">
-      <div><label for="workspace">Workspace</label><select id="workspace"><option value="">Choose a workspace</option><option value="communication">Communication</option><option value="tests">Test</option><option value="configuration">Configuration</option></select></div>
+    <section class="panel workspace-picker" aria-labelledby="workspace-title">
+      <h2 id="workspace-title">Workspace</h2>
+      <div class="buttons" role="group" aria-label="Workspace selection">
+        <button type="button" data-workspace="communication" aria-pressed="false">Communication</button>
+        <button type="button" data-workspace="tests" aria-pressed="false">Test</button>
+        <button type="button" data-workspace="configuration" aria-pressed="false">Configuration</button>
+      </div>
       <div id="tool-target-group" hidden><label id="tool-target-label" for="tool-target">Communication target</label><select id="tool-target"></select></div>
-    </div>
-    <p id="workspace-empty" class="hint" hidden>No active targets available. Start a simulator or connect hardware above.</p>
+      <p id="workspace-empty" class="hint" hidden>No active targets available. Start a simulator or connect hardware above.</p>
+    </section>
     <div class="workspace">
       <section id="control" class="panel" hidden>
         <h2>Receiver operations</h2>
@@ -90,7 +95,7 @@
         <details><summary>Active startup settings (verified local process)</summary><pre id="active-config" tabindex="0">Unknown</pre></details>
       </section>
     </div>
-    <footer>Keep the server terminal open. Closing this page preserves server-managed connections and simulators. Hardware procedures are never automatically cancelled by disconnecting.</footer>
+    <footer>Closing this page keeps simulators and connections active.</footer>
   </main>
 </body>
 </html>
