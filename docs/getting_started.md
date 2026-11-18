@@ -318,12 +318,12 @@ To stop the simulator, press **Ctrl+C** in the terminal where you started it.
 ## First use: the browser GUI
 
 ```sh
-simquaro gui
+synqaro gui
 ```
 
 Keep the terminal open. It prints `http://127.0.0.1:8765` and opens your browser
 after HTTP startup succeeds. If opening fails, copy the URL manually. For a busy
-port use `simquaro gui --port 8766`; `--no-browser` suppresses opening.
+port use `synqaro gui --port 8766`; `--no-browser` suppresses opening.
 Launching the GUI does not start a simulator automatically.
 
 1. Select **Simulators**, choose **receiver-a**, click **Start**, and wait for its running state.

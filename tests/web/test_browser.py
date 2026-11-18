@@ -51,7 +51,7 @@ class BrowserTests(unittest.TestCase):
         port = free_port()
         self.server_log = tempfile.TemporaryFile()
         self.addCleanup(self.server_log.close)
-        self.server = subprocess.Popen([sys.executable,"-m","simquaro","--json","--config",str(self.store.path),
+        self.server = subprocess.Popen([sys.executable,"-m","synqaro","--json","--config",str(self.store.path),
             "gui","--port",str(port),"--no-browser"], stdout=subprocess.PIPE, stderr=self.server_log,
             env={**os.environ, "XDG_RUNTIME_DIR": self.temp.name})
         self.addCleanup(self.stop_server)

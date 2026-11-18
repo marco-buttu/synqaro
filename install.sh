@@ -30,7 +30,7 @@ for tool in realpath flock mktemp cp readlink; do
     command -v "$tool" >/dev/null || fail "Missing $tool; install your distribution's core utilities and retry."
 done
 source_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
-[[ -f "$source_dir/pyproject.toml" && -d "$source_dir/src/simquaro" ]] ||
+[[ -f "$source_dir/pyproject.toml" && -d "$source_dir/src/simquaro" && -d "$source_dir/src/synqaro" ]] ||
     fail 'Extract the complete Synqaro download and run its install.sh again.'
 user_home=$(realpath -m -- "${HOME:?HOME is not set}")
 data_home=${XDG_DATA_HOME:-"$user_home/.local/share"}
@@ -39,6 +39,7 @@ config_home=${XDG_CONFIG_HOME:-"$user_home/.config"}
 [[ "$config_home" == /* ]] || config_home="$user_home/.config"
 config_dir="$(realpath -m -- "$config_home")/simquaro"
 launcher="$(realpath -m -- "$user_home/.local/bin")/simquaro"
+gui_launcher="$(dirname -- "$launcher")/synqaro"
 prefix_arg=${prefix_arg:-"$data_home/synqaro"}
 [[ "$prefix_arg$config_dir$launcher" != *$'\n'* ]] || fail 'Paths must not contain newlines.'
 prefix_lexical=$(realpath -ms -- "$prefix_arg")
@@ -51,11 +52,15 @@ done
 [[ "$prefix" != "$source_dir/"* ]] || fail 'Choose an installation directory outside the downloaded source with --prefix.'
 
 # Refuse to overwrite another program, even if it happens to use our name.
-launcher_target="$prefix/current/bin/simquaro"
-if [[ -e "$launcher" || -L "$launcher" ]]; then
-    [[ -L "$launcher" && $(readlink -- "$launcher") == "$launcher_target" ]] ||
-        fail "Another launcher already exists at $launcher; keep it and resolve the name conflict before retrying."
-fi
+for candidate_launcher in "$launcher" "$gui_launcher"; do
+    launcher_target="$prefix/current/bin/${candidate_launcher##*/}"
+    if [[ -e "$candidate_launcher" || -L "$candidate_launcher" ]]; then
+        [[ -L "$candidate_launcher" && $(readlink -- "$candidate_launcher") == "$launcher_target" ]] ||
+            fail "Another launcher already exists at $candidate_launcher; keep it and resolve the name conflict before retrying."
+    fi
+done
+# Keep the v1 marker and recorded simulator launcher valid on upgrades.
+# The companion Synqaro launcher always uses that same directory and prefix.
 marker="$prefix/.synqaro-installation"
 validate_marker() {
     [[ -f "$marker" && ! -L "$marker" && -O "$marker" ]] || fail 'Unsafe installation marker; choose a different --prefix.'
@@ -144,8 +149,9 @@ printf '%s\n' 'Installing the application and GUI dependencies (internet access 
 env -u PYTHONHOME -u PYTHONPATH -u PIP_TARGET -u PIP_PREFIX -u PIP_ROOT -u PIP_PYTHON \
     -u PIP_USER PIP_CONFIG_FILE=/dev/null "$environment/bin/python" -I -m pip \
     --disable-pip-version-check install "$environment/source[web]"
-"$environment/bin/python" -I -c 'import simquaro, synqaro_protocol, fastapi, uvicorn'
+"$environment/bin/python" -I -c 'import synqaro.web.app, simquaro, synqaro_protocol, fastapi, uvicorn'
 env -u PYTHONHOME -u PYTHONPATH "$environment/bin/simquaro" --help >/dev/null
+env -u PYTHONHOME -u PYTHONPATH "$environment/bin/synqaro" gui --help >/dev/null
 rm -rf --one-file-system -- "$environment/source"
 
 # The environment keeps its original path (venv entry points contain absolute
@@ -155,8 +161,11 @@ next_link="$environment/current-link"
 ln -s -- "$environment" "$next_link"
 mv -Tf -- "$next_link" "$prefix/current"
 published=true
-if [[ ! -L "$launcher" ]]; then ln -s -- "$launcher_target" "$launcher"; fi
-printf 'Installation completed.\nLaunch the GUI: %q gui\n' "$launcher"
+for candidate_launcher in "$launcher" "$gui_launcher"; do
+    launcher_target="$prefix/current/bin/${candidate_launcher##*/}"
+    if [[ ! -L "$candidate_launcher" ]]; then ln -s -- "$launcher_target" "$candidate_launcher"; fi
+done
+printf 'Installation completed.\nLaunch the GUI: %q gui\n' "$gui_launcher"
 case ":${PATH:-}:" in
     *":$(dirname -- "$launcher"):"*) ;;
     *) printf '%s\n' 'The command directory is not on PATH. Use the full launch command shown above.' ;;

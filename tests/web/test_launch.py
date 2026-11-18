@@ -22,7 +22,7 @@ class LaunchTests(unittest.TestCase):
             with socket.socket() as probe:
                 probe.bind(("127.0.0.1", 0))
                 port = probe.getsockname()[1]
-            args = [sys.executable, "-m", "simquaro", "--json", "--config", str(store.path), "gui", "--port", str(port), "--no-browser"]
+            args = [sys.executable, "-m", "synqaro", "--json", "--config", str(store.path), "gui", "--port", str(port), "--no-browser"]
             process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             try:
                 ready, _, _ = select.select([process.stdout], [], [], 8)
@@ -34,6 +34,14 @@ class LaunchTests(unittest.TestCase):
                 busy = subprocess.run(args, capture_output=True, timeout=8)
                 self.assertEqual(busy.returncode, 1)
                 self.assertEqual(json.loads(busy.stdout)["error"]["code"], "GUI_PORT_UNAVAILABLE")
+                action = json.loads(busy.stdout)['error']['actions'][0]
+                self.assertEqual(action[:3], ['synqaro', '--config', str(store.path)])
+                legacy_args = [*args]
+                legacy_args[2] = 'simquaro'
+                legacy = subprocess.run(legacy_args, capture_output=True, timeout=8)
+                self.assertEqual(legacy.returncode, 1)
+                self.assertEqual(json.loads(legacy.stdout)['error']['code'], 'GUI_PORT_UNAVAILABLE')
+                self.assertIn(b'deprecated', legacy.stderr)
                 process.send_signal(signal.SIGINT)
                 out, err = process.communicate(timeout=8)
                 self.assertIn(process.returncode, (0, 130), err.decode())

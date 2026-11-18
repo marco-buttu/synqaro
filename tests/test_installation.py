@@ -43,6 +43,7 @@ class Scripts(unittest.TestCase):
         self.env.pop('PYTHONHOME', None)
         self.prefix = self.home / '.local/share/synqaro'
         self.launcher = self.home / '.local/bin/simquaro'
+        self.gui_launcher = self.home / '.local/bin/synqaro'
         self.config = self.home / '.config/simquaro/instances.json'
 
     def run_script(self, script, *args, env=None, source=REPO):
@@ -114,6 +115,33 @@ class Scripts(unittest.TestCase):
             result = self.run_script('uninstall.sh')
             self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.config.read_text(), 'user settings')
+
+    def test_foreign_synqaro_launcher_is_not_replaced(self):
+        self.gui_launcher.parent.mkdir(parents=True)
+        self.gui_launcher.write_text('another application')
+        result = self.run_script('install.sh', '--python', '/missing/python')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(str(self.gui_launcher), result.stderr)
+        self.assertEqual(self.gui_launcher.read_text(), 'another application')
+        self.assertFalse(self.prefix.exists())
+
+    def test_removal_handles_companion_launcher_with_existing_marker(self):
+        self.fixture_installation()
+        self.launcher.parent.mkdir(parents=True)
+        self.launcher.symlink_to(self.prefix / 'current/bin/simquaro')
+        self.gui_launcher.symlink_to(self.prefix / 'current/bin/synqaro')
+        result = self.run_script('uninstall.sh')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.launcher.is_symlink())
+        self.assertFalse(self.gui_launcher.is_symlink())
+
+    def test_removal_preserves_foreign_companion_launcher(self):
+        self.fixture_installation()
+        self.gui_launcher.parent.mkdir(parents=True)
+        self.gui_launcher.write_text('another application')
+        result = self.run_script('uninstall.sh')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.gui_launcher.read_text(), 'another application')
 
     def test_noninteractive_purge_requires_yes_without_side_effects(self):
         self.config.parent.mkdir(parents=True)
@@ -249,6 +277,7 @@ class Scripts(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertFalse(escaped_target.exists(), 'pip must stay inside its private environment')
         self.assertTrue(self.launcher.is_symlink())
+        self.assertTrue(self.gui_launcher.is_symlink())
         self.assertEqual(self.config.read_text(), 'existing user settings')
         shutil.rmtree(source)
         result = subprocess.run([str(self.launcher), '--help'], env=self.env,
@@ -265,7 +294,7 @@ class Scripts(unittest.TestCase):
         with socket.socket() as listener:
             listener.bind(('127.0.0.1', 0))
             port = listener.getsockname()[1]
-        gui = subprocess.Popen([str(self.launcher), '--config', str(gui_config),
+        gui = subprocess.Popen([str(self.gui_launcher), '--config', str(gui_config),
                                 'gui', '--no-browser', '--port', str(port)],
                                env={**self.env, 'XDG_RUNTIME_DIR': str(runtime)},
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -275,7 +304,7 @@ class Scripts(unittest.TestCase):
             while True:
                 try:
                     with opener.open(f'http://127.0.0.1:{port}/', timeout=1) as response:
-                        self.assertIn(b'Hardware workbench', response.read())
+                        self.assertIn(b'Synqaro', response.read())
                     with opener.open(f'http://127.0.0.1:{port}/static/app.js', timeout=1) as response:
                         self.assertEqual(response.status, 200)
                     break
@@ -288,6 +317,7 @@ class Scripts(unittest.TestCase):
             output, errors = gui.communicate(timeout=10)
             self.assertIn(gui.returncode, (0, -15), output + errors)
         target = self.launcher.resolve()
+        gui_target = self.gui_launcher.resolve()
         # A failed dependency installation must leave the old launcher usable.
         broken_env = {**self.env, 'PIP_NO_INDEX': '1',
                       'PIP_FIND_LINKS': str(self.home / 'no wheels'),
@@ -295,11 +325,19 @@ class Scripts(unittest.TestCase):
         result = self.run_script('install.sh', '--python', PYTHON, env=broken_env)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(self.launcher.resolve(), target)
+        self.assertEqual(self.gui_launcher.resolve(), gui_target)
         result = subprocess.run([str(self.launcher), '--help'], env=self.env,
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
+        # The existing four-line marker remains usable when upgrading an
+        # installation that originally had only the simulator launcher.
+        self.gui_launcher.unlink()
         result = self.run_script('install.sh', '--python', PYTHON)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(self.gui_launcher.is_symlink())
+        result = subprocess.run([str(self.gui_launcher), 'gui', '--help'], env=self.env,
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
         # Refuse removal while this installation still runs a Python process.
         python = self.prefix / 'current/bin/python'
         process = subprocess.Popen([str(python), '-c', 'import time; time.sleep(60)'],
@@ -315,6 +353,7 @@ class Scripts(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertFalse(self.prefix.exists())
         self.assertFalse(self.launcher.is_symlink())
+        self.assertFalse(self.gui_launcher.is_symlink())
         self.assertEqual(self.config.read_text(), 'existing user settings')
         result = self.run_script('uninstall.sh', '--purge', '--yes')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
