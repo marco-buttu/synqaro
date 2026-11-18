@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import json
 import secrets
 
-from simquaro.web import ServiceError
+from synqaro.web import ServiceError
 
 
 class JobManager:

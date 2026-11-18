@@ -30,7 +30,7 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
             entry = replace(entry, config=replace(entry.config, port=sock.getsockname()[1]))
         physical = InventoryEntry(replace(entry.config, name="physical-b", port=1), "hardware")
         self.snapshot = self.store.save({"receiver-a": entry, "physical-b": physical}, expected_revision=snapshot.revision)
-        try: module = importlib.import_module("simquaro.web.app")
+        try: module = importlib.import_module("synqaro.web.app")
         except ImportError: self.fail("Local HTTP API is missing")
         self.app = module.create_app(self.store, runtime_root=Path(self.temp.name) / "run", origin=ORIGIN)
         self.lifespan = self.app.router.lifespan_context(self.app)

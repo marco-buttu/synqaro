@@ -8,12 +8,12 @@ import webbrowser
 def launch(store, *, port, no_browser, runtime_root, emit):
     try:
         import uvicorn
-        from simquaro.web.app import create_app
+        from synqaro.web.app import create_app
     except ImportError:
         emit("gui.error", error={"code": "WEB_EXTRA_REQUIRED",
              "message": "The GUI needs the optional web packages in this Python environment.",
              "actions": ["From the repository, inside its virtual environment: python -m pip install -e '.[web]'",
-                         "Then run: simquaro gui"]})
+                         ["synqaro", "gui"]]})
         return 1
     url = f"http://127.0.0.1:{port}"
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -24,7 +24,7 @@ def launch(store, *, port, no_browser, runtime_root, emit):
     except OSError:
         listener.close()
         emit("gui.error", error={"code": "GUI_PORT_UNAVAILABLE", "message": f"Cannot listen on {url}; no existing process was stopped.",
-             "actions": [["simquaro", "gui", "--port", str(8766 if port != 8766 else 8767), "--no-browser"]]})
+             "actions": [["synqaro", "gui", "--port", str(8766 if port != 8766 else 8767), "--no-browser"]]})
         return 1
 
     async def serve():

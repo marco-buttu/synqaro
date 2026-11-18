@@ -9,7 +9,7 @@ import secrets
 from simquaro.configuration import configuration_io, ConfigurationService
 from simquaro.console import render_bytes, submission
 from simquaro.registry import get_model
-from simquaro.web import ServiceError
+from synqaro.web import ServiceError
 from synqaro_protocol.client import LocalFailure
 from synqaro_protocol.clock import SystemClock
 from synqaro_protocol.codec import NumericToken

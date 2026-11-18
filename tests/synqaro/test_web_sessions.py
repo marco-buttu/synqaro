@@ -24,7 +24,7 @@ class SessionTests(ScriptedClientCase):
         self.snapshot = self.store.save({"receiver-a": replace(entry, config=replace(entry.config,
             host=self.address[0], port=self.address[1]))}, expected_revision=snapshot.revision)
         try:
-            module = importlib.import_module("simquaro.web.sessions")
+            module = importlib.import_module("synqaro.web.sessions")
         except ImportError:
             self.fail("GUI session service is missing")
         self.manager = module.SessionManager(self.store, clock=self.clock)
@@ -125,7 +125,7 @@ class SessionTests(ScriptedClientCase):
 
 class JobTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        try: self.module = importlib.import_module("simquaro.web.jobs")
+        try: self.module = importlib.import_module("synqaro.web.jobs")
         except ImportError: self.fail("GUI job service is missing")
         self.jobs = self.module.JobManager()
         self.addAsyncCleanup(self.jobs.close)

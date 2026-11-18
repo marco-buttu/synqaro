@@ -34,6 +34,7 @@ config_home=${XDG_CONFIG_HOME:-"$user_home/.config"}
 [[ "$config_home" == /* ]] || config_home="$user_home/.config"
 config_dir="$(realpath -m -- "$config_home")/simquaro"
 launcher="$(realpath -m -- "$user_home/.local/bin")/simquaro"
+gui_launcher="$(dirname -- "$launcher")/synqaro"
 prefix_arg=${prefix_arg:-"$data_home/synqaro"}
 [[ "$prefix_arg$config_dir$launcher" != *$'\n'* ]] || fail 'Paths must not contain newlines.'
 prefix_lexical=$(realpath -ms -- "$prefix_arg")
@@ -97,10 +98,12 @@ if [[ "$purge" == true ]]; then
     done
 fi
 
-launcher_target="$prefix/current/bin/simquaro"
-if [[ -L "$launcher" && $(readlink -- "$launcher") == "$launcher_target" ]]; then
-    rm -- "$launcher"
-fi
+for candidate_launcher in "$launcher" "$gui_launcher"; do
+    launcher_target="$prefix/current/bin/${candidate_launcher##*/}"
+    if [[ -L "$candidate_launcher" && $(readlink -- "$candidate_launcher") == "$launcher_target" ]]; then
+        rm -- "$candidate_launcher"
+    fi
+done
 if [[ -d "$prefix" ]]; then
     if [[ "$managed" == true ]]; then
         # Keep ownership evidence until all payload is gone. -xdev and the

@@ -20,6 +20,7 @@ From the repository root, create an isolated environment and install:
 ```sh
 python3 -m venv .venv
 .venv/bin/python -m pip install '.[web]'
+.venv/bin/synqaro gui --help
 .venv/bin/simquaro --help
 ```
 
@@ -29,6 +30,10 @@ download. Do not install into the system interpreter. For development, use
 `.venv/bin/python -m pip install -e '.[web]'` so source changes apply to the
 next command. A normal installation copies the package; after source edits,
 reinstall it into the same environment before restarting an instance.
+If that development environment contains the older distribution named `simquaro`,
+remove it with `.venv/bin/python -m pip uninstall simquaro` **before** installing
+the renamed `synqaro` distribution. The normal `install.sh` workflow needs no such
+step: each installation builds a fresh private environment.
 
 Source execution needs no install or pip:
 
@@ -40,6 +45,11 @@ PYTHONPATH=src python3 -m simquaro list
 `python -m simquaro` and the installed `simquaro` executable use the same entry
 point. Examples below assume the environment's `bin` directory is on `PATH`.
 Use the same environment and user in both terminals.
+
+The distribution is named `synqaro` and installs both commands: `synqaro gui`
+opens the common hardware console; `simquaro` manages simulators and retains its
+existing console/test commands. `python -m synqaro gui` is the equivalent source
+entry point (use `PYTHONPATH=src` from the checkout).
 
 ## Architecture and manual interfaces
 
@@ -119,10 +129,14 @@ separate operations; general hot reload is not available.
 
 ### Local browser server
 
-`simquaro gui [--port 8765] [--no-browser]` runs foreground on `127.0.0.1` only,
+`synqaro gui [--port 8765] [--no-browser]` runs foreground on `127.0.0.1` only,
 one worker, no reload/proxy trust/CORS. It prints its URL after HTTP startup,
 then attempts to open the browser; it starts no simulators implicitly. Busy ports
 produce a corrective command and never cause another listener to be killed.
+Use `synqaro --config /path/to/instances.json gui` for a selected inventory.
+The same inventory files and default paths are retained, so this command change
+requires no configuration migration. `simquaro gui` remains a deprecated alias
+that warns on stderr and forwards to the same Synqaro implementation.
 The page is titled **Synqaro — Hardware Console**. Select **Simulators** or
 **Real hardware** in the header. The management panel always remains visible:
 select a single target or **All** and use Start/Stop/Restart for simulators or
@@ -337,6 +351,10 @@ simulated apparatus does**. Models do not import the CLI, inventory, runtime, or
 registry. The registry is where the application explicitly selects a model.
 
 ```text
+src/synqaro/
+  cli.py, __main__.py      Application entry point: synqaro gui
+  web/                    Common hardware/simulator GUI, sessions and jobs
+    static/               Browser HTML, JavaScript and CSS
 src/synqaro_protocol/
   codec.py, errors.py      Shared ASCII codec and diagnostic rendering
   transport.py, clock.py   Shared TCP transport and bounded deadlines
@@ -359,6 +377,13 @@ src/simquaro/
       model.py            Receiver state and request behavior
       procedures.py       Calibration, scan, and cancellation behavior
 ```
+
+The GUI reuses the current inventory, checks and simulator lifecycle services
+from Simquaro; it does not duplicate them. The shared protocol library remains
+independent of both application entry points. Only the deprecated CLI alias
+imports the Synqaro CLI lazily; simulator runtime/model code does not depend on
+the GUI. The installer publishes both launchers and the uninstaller removes only
+launchers pointing at that installation, preserving user configuration by default.
 
 For example, the common parser recognizes a numeric value without deciding
 whether that value is a valid receiver frequency. That decision belongs to the

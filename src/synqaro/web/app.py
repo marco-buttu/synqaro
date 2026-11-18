@@ -19,9 +19,9 @@ from simquaro.configuration import (ConfigurationError, ConfigurationService, co
 from simquaro.control import control_request
 from simquaro.registry import get_model
 from simquaro.runtime import Runtime
-from simquaro.web import ServiceError
-from simquaro.web.jobs import JobManager
-from simquaro.web.sessions import SessionManager
+from synqaro.web import ServiceError
+from synqaro.web.jobs import JobManager
+from synqaro.web.sessions import SessionManager
 from synqaro_protocol.client import LocalFailure
 from synqaro_protocol.errors import ProtocolError
 

@@ -1,4 +1,4 @@
-"""Local GUI services; optional HTTP packages are imported only by app.py."""
+"""Common hardware GUI services; HTTP dependencies are optional."""
 
 
 class ServiceError(ValueError):
