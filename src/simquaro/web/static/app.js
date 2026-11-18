@@ -115,8 +115,8 @@ function renderPanels() {
   const panel = workspace;
   for (const button of document.querySelectorAll('[data-workspace]'))
     button.setAttribute('aria-pressed', String(button.dataset.workspace === panel));
-  for (const id of ["console", "control", "tests", "configuration"])
-    $(id).hidden = !current || (panel === "communication" ? !["console", "control"].includes(id) : panel !== id);
+  for (const id of ["connection", "console", "control", "tests", "configuration"])
+    $(id).hidden = !current || (panel === "communication" ? !["connection", "console", "control"].includes(id) : panel !== id);
   $("tool-target-group").hidden = !panel;
   text("tool-target-label", panel === "communication" ? "Communication target" : "Target");
   $("workspace-empty").hidden = !panel || !!current;
@@ -179,7 +179,9 @@ function renderManagement() {
   const gui = allRows.filter(r => r.state === "running" && r.owner === "gui").length;
   const external = allRows.filter(r => r.state === "running" && r.owner === "external").length;
   const connected = allRows.filter(r => r.state === "connected").length;
-  const summary = simulator ? `GUI: ${gui} · External: ${external}` : `${connected}/${allRows.length} connected`;
+  const countLabel = count => `${count} simulator${count === 1 ? "" : "s"} running`;
+  const summary = simulator ? `${countLabel(gui)}, started by this GUI` +
+    (external ? ` · ${countLabel(external)}, started externally` : "") : `${connected}/${allRows.length} connected`;
   text("management-status", (rows.length === 1 && $("target").value !== "all" ? detail(rows[0]).summary + " · " : "") +
     summary + (pending ? ` · ${pending} in progress` : "") + (failed ? ` · ${failed} failed — see Details` : ""));
   $("management-status").classList.toggle("failure", failed > 0);
