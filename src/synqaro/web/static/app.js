@@ -8,6 +8,8 @@ let wire = [], jobId = null, working = false, polling = false, monitoring = fals
 let faultCatalog = [];
 let observations = [], observing = false;
 let workspace = "";
+let operationsSession = null;
+let observationRevision = 0;
 const submissionErrors = new Map();
 
 async function api(path, method = "GET", body) {
@@ -38,6 +40,7 @@ async function api(path, method = "GET", body) {
 function notice(error) { $("notice").hidden = false; text("notice", error.message || String(error)); }
 async function action(operation) {
   if (working) return;
+  observationRevision++;
   working = true;
   for (const control of document.querySelectorAll("button,select,input,textarea")) control.disabled = true;
   $("notice").hidden = true;
@@ -80,7 +83,7 @@ async function loadInventory(preferred) {
 
 async function showTarget() {
   current = targets.find(t => t.name === $("tool-target").value) || null;
-  session = null;
+  session = null; operationsSession = null;
   wire = []; cursor = 0;
   if (!current) { renderPanels(); return; }
   text("wire-log", "No TCP connection for " + current.name + ".");
@@ -107,16 +110,21 @@ function availability() {
   const none = !selectedTargets().length;
   for (const id of ["start", "stop", "restart"]) $(id).disabled = working || none;
   for (const id of ["set-frequency", "get-frequency", "general-status", "calibrate", "reboot", "scan", "procedure-status", "cancel", "monitor"])
-    $(id).disabled = working || !session || session.mode !== "managed" || session.state !== "connected";
+    $(id).disabled = working || !current || !!session?.exclusive ||
+      !!(operationsSession && operationsSession.state !== "connected");
+  $("operations-disconnect").disabled = working || !operationsSession;
+  $("operations-reconnect").disabled = working || !current || !!session?.exclusive;
   $("connect").disabled = working || !current;
   $("disconnect").disabled = working || !session;
+  $("exclusive").disabled = working || !!session;
+  $("send-literal").disabled = working || !session || session.state !== "connected";
 }
 function renderPanels() {
   const panel = workspace;
   for (const button of document.querySelectorAll('[data-workspace]'))
     button.setAttribute('aria-pressed', String(button.dataset.workspace === panel));
-  for (const id of ["connection", "console", "control", "tests", "configuration"])
-    $(id).hidden = !current || (panel === "communication" ? !["connection", "console", "control"].includes(id) : panel !== id);
+  for (const id of ["console-communication", "control", "tests", "configuration"])
+    $(id).hidden = !current || (panel === "communication" ? !["console-communication", "control"].includes(id) : panel !== id);
   $("tool-target-group").hidden = !panel;
   text("tool-target-label", panel === "communication" ? "Communication target" : "Target");
   $("workspace-empty").hidden = !panel || !!current;
@@ -138,16 +146,35 @@ async function syncTools(preferred) {
 }
 async function restoreSession() {
   if (!current) return;
-  const observed = observations.find(r => r.name === current.name)?.sessions?.[0];
+  const targetName = current.name;
+  const sessions = observations.find(r => r.name === targetName)?.sessions || [];
+  operationsSession = sessions.find(s => s.mode === "managed") || null;
+  const observed = sessions.find(s => s.mode !== "managed");
   if (!observed) {
     session = null; text("connection-state", "disconnected"); text("session-revision", "");
+    renderOperationsState();
     return;
   }
   if (session?.id !== observed.id) {
     session = observed; cursor = 0; wire = [];
-    $("mode").value = observed.mode; updateMode();
-    consume(await api("/sessions/" + observed.id + "/events"));
+    $("mode").value = observed.mode; $("exclusive").checked = observed.exclusive; updateMode();
+    const history = await api("/sessions/" + observed.id + "/events");
+    if (current?.name !== targetName || session?.id !== observed.id) return;
+    consume(history);
   } else session.state = observed.state;
+  renderOperationsState();
+}
+function renderOperationsState() {
+  text("operations-state", session?.exclusive ? "Suspended — disconnect the exclusive console to resume operations" :
+    operationsSession ? operationsSession.state + " · automatic library connection" :
+      "disconnected — connects automatically on your next operation");
+  if (session?.exclusive || (operationsSession && operationsSession.state !== "connected")) $("monitor").checked = false;
+}
+function rememberSession(history) {
+  observationRevision++;
+  const row = observations.find(r => r.name === history.target);
+  if (row) row.sessions = history.exclusive ? [history] :
+    [...row.sessions.filter(s => (s.mode === "managed") !== (history.mode === "managed")), history];
 }
 function renderManagement() {
   const simulator = $("target-kind").value === "simulator";
@@ -188,7 +215,10 @@ function renderManagement() {
   $("management-status").classList.toggle("success", failed === 0 && gui + external + connected > 0);
 }
 async function refreshManagement() {
-  observations = (await api("/management")).targets;
+  const revision = observationRevision;
+  const result = await api("/management");
+  if (revision !== observationRevision) return;
+  observations = result.targets;
   renderManagement(); await syncTools();
 }
 async function manage(operation) {
@@ -276,7 +306,6 @@ async function saveConfig() {
 }
 
 async function disconnect() {
-  $("monitor").checked = false;
   if (!session) { text("connection-state", "disconnected"); return; }
   const previous = session;
   const final = await api("/sessions/" + previous.id, "DELETE", {});
@@ -285,12 +314,11 @@ async function disconnect() {
   if (row) row.sessions = row.sessions.filter(s => s.id !== previous.id);
   text("connection-state", "disconnected — hardware procedures were not cancelled");
   text("session-revision", "");
+  renderOperationsState();
 }
 function updateMode() {
   const mode = $("mode").value;
-  $("literal-controls").hidden = mode === "managed";
-  text("mode-help", mode === "managed" ? "Connect sends configuration/status probes; IDs and recovery are handled by the shared client." :
-    mode === "raw" ? "Connect sends zero bytes. Send decodes escapes without adding LF. No probes, IDs, polling or recovery." :
+  text("mode-help", mode === "raw" ? "Connect sends zero bytes. Send decodes escapes without adding LF. No probes, IDs, polling or recovery." :
     "Connect sends zero bytes. Send appends LF to literal ASCII text. No probes, IDs, polling or recovery.");
 }
 function consume(history) {
@@ -300,7 +328,6 @@ function consume(history) {
     if (event.cursor <= cursor) continue;
     const detail = event.data || event.message || (event.result ? pretty(event.result) : pretty(event));
     addWire(`${event.observed_at || "local"} [${event.kind}] ${detail}`);
-    if (event.kind === "response") text("response", pretty(event.result));
   }
   cursor = history.newest;
   text("connection-state", history.state + " · " + history.mode);
@@ -310,16 +337,40 @@ function consume(history) {
 }
 async function connect() {
   if (!current) throw new Error("Select an active target first.");
-  const history = await api("/sessions", "POST", {target:current.name, mode:$("mode").value, persistent:true});
-  session = {id:history.id, target:current.name, revision:history.revision, mode:history.mode, state:history.state}; cursor = 0;
+  const exclusive = $("exclusive").checked;
+  if (exclusive && !confirm("Release this GUI server's existing connections to this target and give the console exclusive access? In-flight commands may have an uncertain outcome. Other applications are not disconnected.")) return;
+  const history = await api("/sessions", "POST", {target:current.name, mode:$("mode").value, persistent:true, exclusive});
+  session = history; cursor = 0;
   consume(history);
-  const row = observations.find(r => r.name === current.name);
-  if (row) row.sessions = [history];
+  rememberSession(history);
+  if (exclusive) operationsSession = null;
+  renderOperationsState();
+}
+async function connectOperations() {
+  if (!current || session?.exclusive) throw new Error("Disconnect the exclusive console before using receiver operations.");
+  const target = current;
+  const history = await api("/sessions", "POST", {target:target.name, mode:"managed", persistent:true});
+  if (current !== target) throw new Error("Target changed while connecting; no operation was sent. The connection remains available on the original target.");
+  operationsSession = history; rememberSession(history); renderOperationsState();
+  return history;
+}
+async function disconnectOperations() {
+  $("monitor").checked = false;
+  if (!operationsSession) return;
+  const previous = operationsSession;
+  await api("/sessions/" + previous.id, "DELETE", {});
+  operationsSession = null;
+  const row = observations.find(r => r.name === previous.target);
+  if (row) row.sessions = row.sessions.filter(s => s.id !== previous.id);
+  renderOperationsState();
 }
 async function request(verb, fields = {}) {
-  if (!session || session.mode !== "managed") throw new Error("Connect the console before sending receiver commands.");
-  const response = await api("/sessions/" + session.id + "/requests", "POST", {verb, fields});
-  text("response", pretty(response));
+  const target = current;
+  const connection = operationsSession || await connectOperations();
+  if (current !== target || connection.target !== target?.name) throw new Error("Target changed; no operation was sent.");
+  if (session?.exclusive || connection.state !== "connected") throw new Error("Operations connection is unavailable. Wait for recovery or use Reconnect operations.");
+  const response = await api("/sessions/" + connection.id + "/requests", "POST", {verb, fields});
+  if (current === target && operationsSession?.id === connection.id) text("response", pretty(response));
   return response;
 }
 
@@ -331,7 +382,7 @@ async function lifecycle(operation) {
   jobId = result.id; text("job-state", `${operation}: running (${jobId})`);
 }
 async function runTests() {
-  if (session) throw new Error("Disconnect this target's GUI connections before running checks.");
+  if (session || operationsSession) throw new Error("Disconnect operations and the manual console in Communication before running checks.");
   const allow = $("allow-changes").checked;
   if (allow && !confirm("Run modifying checks on an isolated target? Frequency, calibration, scan and reboot WILL change hardware state.")) return;
   const result = await api(path() + "/tests", "POST", {allow_changes:allow});
@@ -374,7 +425,7 @@ async function poll() {
         }
       } catch (error) {
         if (error.code === "UNKNOWN_SESSION" && session?.id === oldSession.id) {
-          session = null; $("monitor").checked = false; text("connection-state", "expired/disconnected — reconnect explicitly");
+          session = null; text("connection-state", "expired/disconnected — reconnect explicitly");
         }
         notice(error);
       }
@@ -390,7 +441,7 @@ async function poll() {
         if (job.kind !== "tests") { await refreshAdmin(); if (job.error || job.result?.ok === false) notice(new Error(pretty(job.error || job.result))); }
       }
     }
-    if ($("monitor").checked && session?.mode === "managed" && !working && !monitoring) {
+    if ($("monitor").checked && !session?.exclusive && !working && !monitoring) {
       monitoring = true;
       try { await request("status", {name:$("procedure").value}); }
       catch (error) { $("monitor").checked = false; notice(error); }
@@ -401,6 +452,8 @@ async function poll() {
 }
 
 button("connect", connect); button("disconnect", disconnect);
+button("operations-disconnect", disconnectOperations);
+button("operations-reconnect", async () => { await disconnectOperations(); await connectOperations(); });
 button("start", () => manage("start")); button("stop", () => manage("stop")); button("restart", () => manage("restart"));
 button("refresh-admin", async () => { await refreshManagement(); await refreshAdmin(); });
 button("set-frequency", () => request("set", {name:"frequency", value:number("frequency"), unit:"GHz"}));
@@ -432,7 +485,7 @@ $("target").addEventListener("change", () => action(async () => {
 $("target-kind").addEventListener("change", () => action(async () => {
   // Selecting a category observes existing resources; it never connects hardware.
   localStorage.setItem("synqaro-target-kind", $("target-kind").value);
-  session = null; current = null; await loadInventory();
+  session = null; operationsSession = null; current = null; await loadInventory();
 }));
 for (const button of document.querySelectorAll('[data-workspace]'))
   button.addEventListener('click', () => action(async () => {
@@ -441,8 +494,8 @@ for (const button of document.querySelectorAll('[data-workspace]'))
   }));
 $("tool-target").addEventListener("change", () => action(showTarget));
 $("monitor").addEventListener("change", () => {
-  if ($("monitor").checked && (!session || session.mode !== "managed")) {
-    $("monitor").checked = false; notice(new Error("Connect in Guided mode before enabling monitoring."));
+  if ($("monitor").checked && session?.exclusive) {
+    $("monitor").checked = false; notice(new Error("Disconnect the exclusive console before monitoring operations."));
   }
 });
 setInterval(poll, 500);

@@ -68,6 +68,85 @@ class BrowserTests(unittest.TestCase):
         self.page.goto(self.url)
         expect(self.page.get_by_role("heading", name="Synqaro — Hardware Console", exact=True)).to_be_visible()
 
+    def test_operations_and_manual_console_have_independent_connections(self):
+        self.page.locator('#start').click()
+        expect(self.page.locator('#management-status')).to_contain_text('1 simulator running', timeout=8000)
+        self.page.get_by_role('button', name='Communication', exact=True).click()
+        expect(self.page.get_by_role('heading', name='Receiver console communication', exact=True)).to_be_visible()
+        expect(self.page.locator('#mode option')).to_have_text(['Literal line — append LF', 'Raw bytes — explicit escapes, no LF'])
+        self.assertIsNone(self.page.evaluate('operationsSession'))
+        self.page.get_by_role('button', name='Read frequency', exact=True).click()
+        expect(self.page.locator('#operations-state')).to_contain_text('connected · automatic')
+        managed_id = self.page.evaluate('operationsSession.id')
+        expect(self.page.locator('#connection-state')).to_have_text('disconnected')
+        self.page.locator('#mode').select_option('raw')
+        self.page.locator('#connect').click()
+        expect(self.page.locator('#connection-state')).to_contain_text('connected · raw')
+        manual_id = self.page.evaluate('session.id')
+        self.assertNotEqual(managed_id, manual_id)
+        self.page.locator('#console > summary').click()
+        self.page.locator('#literal').fill(r'#nonsense <id=77>\n')
+        self.page.locator('#send-literal').click()
+        expect(self.page.locator('#wire-log')).to_contain_text('UNKNOWN_VERB')
+        self.page.get_by_role('button', name='Read frequency', exact=True).click()
+        expect(self.page.locator('#response')).to_contain_text('sampled_at')
+        self.assertEqual(self.page.evaluate('operationsSession.id'), managed_id)
+        self.page.reload()
+        self.page.get_by_role('button', name='Communication', exact=True).click()
+        expect(self.page.locator('#connection-state')).to_contain_text('connected · raw')
+        expect(self.page.locator('#operations-state')).to_contain_text('connected')
+        self.assertEqual(self.page.evaluate('session.id'), manual_id)
+        self.assertEqual(self.page.evaluate('operationsSession.id'), managed_id)
+        self.page.locator('#mode').select_option('line')
+        expect(self.page.locator('#connection-state')).to_contain_text('disconnected')
+        self.page.get_by_role('button', name='Read receiver status', exact=True).click()
+        expect(self.page.locator('#response')).to_contain_text('health')
+        self.assertEqual(self.page.evaluate('operationsSession.id'), managed_id)
+        self.page.screenshot(path='/tmp/synqaro-independent-console.png', full_page=True)
+
+    def test_delayed_operations_connect_cannot_follow_a_target_switch(self):
+        self.page.locator('#target').select_option('all')
+        self.page.locator('#start').click()
+        expect(self.page.locator('#management-status')).to_contain_text('2 simulators running', timeout=8000)
+        self.page.get_by_role('button', name='Communication', exact=True).click()
+        self.page.locator('#tool-target').select_option('receiver-a')
+        self.page.evaluate('''() => {
+            const original = window.fetch;
+            window.fetch = async (url, options) => {
+                const response = await original(url, options);
+                if (url === '/api/sessions' && options?.method === 'POST' &&
+                    JSON.parse(options.body).mode === 'managed') {
+                    await new Promise(resolve => window.releaseOperationConnect = resolve);
+                }
+                return response;
+            };
+        }''')
+        self.page.locator('#monitor').check()
+        self.page.wait_for_function('() => typeof window.releaseOperationConnect === "function"')
+        self.page.locator('#tool-target').select_option('receiver-b')
+        self.page.evaluate('window.releaseOperationConnect()')
+        self.page.wait_for_function('() => !monitoring')
+        self.assertIsNone(self.page.evaluate('operationsSession'))
+        expect(self.page.locator('#response')).to_have_text('No request sent to receiver-b.')
+
+    def test_exclusive_console_explicitly_suspends_operations_until_disconnect(self):
+        self.page.locator('#start').click()
+        expect(self.page.locator('#management-status')).to_contain_text('1 simulator running', timeout=8000)
+        self.page.get_by_role('button', name='Communication', exact=True).click()
+        self.page.get_by_role('button', name='Read frequency', exact=True).click()
+        expect(self.page.locator('#operations-state')).to_contain_text('connected')
+        self.page.get_by_label('Exclusive access', exact=False).check()
+        self.page.once('dialog', lambda d: d.accept())
+        self.page.locator('#connect').click()
+        expect(self.page.locator('#operations-state')).to_contain_text('Suspended')
+        expect(self.page.get_by_role('button', name='Read frequency', exact=True)).to_be_disabled()
+        self.page.reload()
+        self.page.get_by_role('button', name='Communication', exact=True).click()
+        expect(self.page.locator('#operations-state')).to_contain_text('Suspended')
+        self.page.locator('#disconnect').click()
+        self.page.get_by_role('button', name='Read frequency', exact=True).click()
+        expect(self.page.locator('#response')).to_contain_text('sampled_at')
+
     def test_management_controls_and_workspace_heading_align(self):
         target = self.page.locator('#target').bounding_box()
         for name in ('start', 'stop', 'restart', 'refresh-admin'):
@@ -108,7 +187,7 @@ class BrowserTests(unittest.TestCase):
         expect(self.page.locator('#connect')).to_be_visible()
         expect(self.page.locator('#disconnect')).to_be_visible()
         expect(self.page.locator('#connection-state')).to_be_visible()
-        expect(self.page.get_by_label('Console mode', exact=True)).to_be_visible()
+        expect(self.page.get_by_label('Mode', exact=True)).to_be_visible()
         self.assertGreater(console.bounding_box()['y'], self.page.locator('#control').bounding_box()['y'])
         self.page.get_by_role('button', name='Read frequency', exact=True).click()
         expect(self.page.locator('#response')).to_contain_text('sampled_at')
@@ -129,7 +208,7 @@ class BrowserTests(unittest.TestCase):
         self.assertGreater(console.bounding_box()['y'], self.page.locator('#control').bounding_box()['y'])
         self.page.screenshot(path='/tmp/synqaro-operations-narrow.png', full_page=True)
         self.page.get_by_role('button', name='Test', exact=True).click()
-        expect(self.page.locator('#connection')).not_to_be_visible()
+        expect(self.page.locator('#console-communication')).not_to_be_visible()
         expect(console).not_to_be_visible()
         self.page.get_by_role('button', name='Communication', exact=True).click()
         expect(self.page.locator('#connection-state')).to_contain_text(re.compile('^connected'))
@@ -222,8 +301,8 @@ class BrowserTests(unittest.TestCase):
         self.page.locator('#start').click()
         expect(self.page.locator('#management-status')).to_contain_text('1/1 connected', timeout=8000)
         expect(self.page.locator('#console')).to_be_visible()
-        self.page.get_by_label('Console mode', exact=True).select_option('raw')
-        expect(self.page.locator('#management-status')).to_contain_text('0/1 connected', timeout=8000)
+        self.page.get_by_label('Mode', exact=True).select_option('raw')
+        expect(self.page.locator('#management-status')).to_contain_text('1/1 connected', timeout=8000)
         expect(self.page.locator('#console')).to_be_visible()
         self.page.locator('#connect').click()
         expect(self.page.locator('#connection-state')).to_contain_text('connected · raw')
@@ -241,7 +320,7 @@ class BrowserTests(unittest.TestCase):
         self.page.get_by_role("button", name="Communication", exact=True).click()
         self.page.get_by_role("button", name="Connect", exact=True).click()
         expect(self.page.locator("#connection-state")).to_contain_text(re.compile("^connected"))
-        self.assertEqual(self.page.get_by_label("Console mode", exact=True).count(), 1,
+        self.assertEqual(self.page.get_by_label("Mode", exact=True).count(), 1,
                          self.page.locator("label").all_text_contents())
 
     def test_guided_operations_raw_errors_and_independent_tabs(self):
@@ -264,9 +343,9 @@ class BrowserTests(unittest.TestCase):
         other.get_by_role("button", name="Connect", exact=True).click()
         expect(other.locator("#connection-state")).to_contain_text(re.compile("^connected"))
         expect(self.page.locator("#connection-state")).to_contain_text(re.compile("^connected"))
-        self.assertEqual(self.page.get_by_label("Console mode", exact=True).count(), 1,
+        self.assertEqual(self.page.get_by_label("Mode", exact=True).count(), 1,
                          self.page.locator("label").all_text_contents())
-        self.page.get_by_label("Console mode", exact=True).select_option("raw")
+        self.page.get_by_label("Mode", exact=True).select_option("raw")
         expect(self.page.locator("#connection-state")).to_contain_text("disconnected")
         self.page.get_by_role("button", name="Connect", exact=True).click()
         self.page.locator('#console > summary').click()
@@ -290,6 +369,7 @@ class BrowserTests(unittest.TestCase):
         self.page.get_by_role("button", name="Reboot hardware", exact=True).click()
         expect(self.page.locator("#response")).to_contain_text("accepted")
         self.page.get_by_role("button", name="Disconnect", exact=True).click()
+        self.page.get_by_role("button", name="Disconnect operations", exact=True).click()
         self.page.get_by_role("button", name="Test", exact=True).click()
         self.page.get_by_label("Allow changes for this run", exact=False).check()
         self.page.once("dialog", lambda dialog: dialog.accept())
@@ -301,6 +381,8 @@ class BrowserTests(unittest.TestCase):
 
     def test_scheduled_fault_waits_for_explicit_hardware_request(self):
         self.start_and_connect()
+        self.page.get_by_role("button", name="Read receiver status", exact=True).click()
+        expect(self.page.locator("#response")).to_contain_text('health')
         self.page.get_by_text("Simulator fault injection", exact=True).click()
         self.page.get_by_role("button", name="Refresh faults", exact=True).click()
         self.page.get_by_label("Fault", exact=True).select_option("drop_response")
@@ -342,7 +424,7 @@ class BrowserTests(unittest.TestCase):
         expect(self.page.get_by_label("Saved TCP port", exact=True)).to_have_value(str(endpoint))
         expect(self.page.get_by_label("Expected hardware identity", exact=True)).to_have_value("saved-identity-two")
         self.page.get_by_role("button", name="Communication", exact=True).click()
-        self.page.get_by_label("Console mode", exact=True).select_option("raw")
+        self.page.get_by_label("Mode", exact=True).select_option("raw")
         self.page.get_by_role("button", name="Connect", exact=True).click()
         expect(self.page.locator("#session-revision")).to_contain_text(f"127.0.0.1:{endpoint}")
         expect(self.page.locator("#session-revision")).to_contain_text("saved-identity-two")

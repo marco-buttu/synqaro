@@ -328,28 +328,40 @@ Launching the GUI does not start a simulator automatically.
 
 1. Select **Simulators**, choose **receiver-a**, click **Start**, and wait for its running state.
    This confirms the local process, not physical-hardware health.
-2. Select the **Communication** workspace and **receiver-a**. In **Connection**, keep
-   **Guided** mode and click **Connect**. This explicitly reads configuration/status.
-   The connection stays on the server when you close or reload the browser tab.
+2. Select the **Communication** workspace and **receiver-a**.
+   **Receiver operations** connects automatically when you first click an operation,
+   reading configuration/status before sending that command. Opening the workspace
+   alone sends no hardware requests. The connection survives browser closure/reload.
 3. In **Receiver operations**, enter a frequency and click **Set frequency** / **Read frequency**.
-   Inspect the parsed response; expand **Console** below the operations to see actual TX/RX bytes. The receiver applies
+   Inspect the parsed response. The receiver applies
    `5.1234565` GHz as `5.123457` GHz; input spelling reaches firmware unchanged.
 4. Click **Run calibrate**, then **Read procedure status**. Explicitly enable
    **Monitor procedure** for status requests every 500 ms; it is off by default.
    Open **Scan settings** for a ten-point scan; choose **Procedure → scan** to
    inspect/cancel it. This console does not associate scientific data with scan points.
-5. Select **Raw** in **Console mode** (disconnecting the old connection), click
+5. In **Receiver console communication**, select **Raw bytes** in **Mode**, click
    **Connect**, expand **Console**, enter `#nonsense <id=77>\n`, then **Send literal request**.
    Expect `code=UNKNOWN_VERB`. Raw escapes are `\n`, `\r`, `\t`, `\xNN`, and `\\`;
    no LF/ID/probe/retry is added. **Literal line** instead appends LF. A two-second
    no-data notice leaves TCP open. Invalid protocol messages are allowed.
+   This console has its own connection and byte history. Changing its mode or
+   disconnecting it does not disconnect Receiver operations.
 6. Open **Simulator fault injection**, click **Refresh faults**, select
    `frequency_read_failure`, then **Activate fault**. Guided frequency reads now
    report an error. **Clear fault** removes the cause. Scheduling uses explicit
    trigger events and occurrence counts; reads/monitoring may consume matching rules.
-7. Click **Disconnect**, select the **Test** workspace, then **Run checks**. Read-only is the default.
+7. Click **Disconnect** in the console panel and **Disconnect operations** if connected,
+   select the **Test** workspace, then **Run checks**. Read-only is the default.
    Modifying checks require the checkbox and confirmation for each run. Close
    other GUI connections to that target and isolate external clients yourself.
+
+For hardware that accepts only one connection, select **Exclusive access** before
+connecting the console. After confirmation, this closes this GUI server's other
+connections to that target and suspends Receiver operations until you disconnect
+the console. Connections from other applications must be closed separately.
+The operations client can recover a failed connection by reconnecting and reading
+hardware state; an uncertain modifying command is never automatically repeated.
+**Reconnect operations** also lets you reopen the connection explicitly.
 
 The management panel remains visible while the selected workspace changes.
 Select **Configuration** to edit startup settings. Selecting a target or
