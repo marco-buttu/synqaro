@@ -133,6 +133,12 @@ reported separately; a running simulator process is not proof of hardware health
 
 In the **Workspace** panel, click **Communication**, **Test**, or **Configuration**
 to display its tools. The selected button is highlighted; initially none is selected.
+In Communication, connection controls and state remain visible above **Receiver
+operations**. **Console** follows the operations and starts collapsed; expanding or
+collapsing it neither opens nor closes a TCP connection, and wire evidence remains
+available within its normal history limits. Simulator counts describe currently
+running instances started by this GUI; external instances are listed separately
+only when at least one is running.
 Communication lists running simulators or connected hardware. The selected hardware
 remains visible as disconnected if its connection closes, so you can reconnect or
 change console mode. The other panels

@@ -86,7 +86,7 @@ class BrowserTests(unittest.TestCase):
             expect(button).to_have_attribute('aria-pressed', 'false')
         self.page.locator('#start').click()
         expect(self.page.locator('#management-status')).to_have_text(
-            '✓ receiver-a: running · GUI: 1 · External: 0', timeout=8000)
+            '✓ receiver-a: running · 1 simulator running, started by this GUI', timeout=8000)
         self.page.screenshot(path='/tmp/synqaro-layout-overview.png', full_page=True)
         for name, panel in [('Communication', 'console'), ('Test', 'tests'), ('Configuration', 'configuration')]:
             button = self.page.get_by_role('button', name=name, exact=True)
@@ -100,13 +100,72 @@ class BrowserTests(unittest.TestCase):
             self.page.locator('#management-status').evaluate('(e) => parseFloat(getComputedStyle(e).fontSize)'))
         self.page.screenshot(path='/tmp/synqaro-layout-desktop.png', full_page=True)
 
+    def test_collapsed_console_preserves_connection_and_guided_operations(self):
+        self.start_and_connect()
+        console = self.page.locator('#console')
+        expect(console).to_have_js_property('open', False)
+        expect(self.page.locator('#wire-log')).not_to_be_visible()
+        expect(self.page.locator('#connect')).to_be_visible()
+        expect(self.page.locator('#disconnect')).to_be_visible()
+        expect(self.page.locator('#connection-state')).to_be_visible()
+        expect(self.page.get_by_label('Console mode', exact=True)).to_be_visible()
+        self.assertGreater(console.bounding_box()['y'], self.page.locator('#control').bounding_box()['y'])
+        self.page.get_by_role('button', name='Read frequency', exact=True).click()
+        expect(self.page.locator('#response')).to_contain_text('sampled_at')
+        self.page.locator('#console > summary').click()
+        expect(self.page.locator('#wire-log')).to_be_visible()
+        sid = self.page.evaluate('session.id')
+        evidence = self.page.locator('#wire-log').inner_text()
+        self.page.locator('#console > summary').click()
+        self.page.get_by_role('button', name='Read receiver status', exact=True).click()
+        expect(self.page.locator('#response')).to_contain_text('health')
+        self.assertEqual(self.page.evaluate('session.id'), sid)
+        self.page.locator('#console > summary').click()
+        expect(self.page.locator('#wire-log')).to_contain_text(evidence)
+        self.page.locator('#console > summary').click()
+        self.page.screenshot(path='/tmp/synqaro-operations-first.png', full_page=True)
+        self.page.set_viewport_size({'width': 390, 'height': 844})
+        self.assertLessEqual(self.page.evaluate('document.documentElement.scrollWidth'), 390)
+        self.assertGreater(console.bounding_box()['y'], self.page.locator('#control').bounding_box()['y'])
+        self.page.screenshot(path='/tmp/synqaro-operations-narrow.png', full_page=True)
+        self.page.get_by_role('button', name='Test', exact=True).click()
+        expect(self.page.locator('#connection')).not_to_be_visible()
+        expect(console).not_to_be_visible()
+        self.page.get_by_role('button', name='Communication', exact=True).click()
+        expect(self.page.locator('#connection-state')).to_contain_text(re.compile('^connected'))
+        self.page.get_by_role('button', name='Disconnect', exact=True).click()
+        expect(self.page.locator('#connection-state')).to_contain_text(re.compile('^disconnected'))
+
+    def test_running_counts_distinguish_cli_instances_and_hide_zero_external(self):
+        external = subprocess.Popen([sys.executable, '-m', 'simquaro', '--json',
+            '--config', str(self.store.path), 'start', 'receiver-b'],
+            stdout=subprocess.PIPE, stderr=self.server_log,
+            env={**os.environ, 'XDG_RUNTIME_DIR': self.temp.name})
+        def stop_external():
+            if external.poll() is None:
+                external.send_signal(signal.SIGINT)
+            external.communicate(timeout=8)
+        self.addCleanup(stop_external)
+        ready, _, _ = select.select([external.stdout], [], [], 8)
+        self.assertTrue(ready, 'External simulator did not report startup')
+        record = json.loads(external.stdout.readline())
+        self.assertTrue(record['result']['ok'], record)
+        status = self.page.locator('#management-status')
+        expect(status).to_contain_text('0 simulators running, started by this GUI')
+        expect(status).to_contain_text('1 simulator running, started externally', timeout=8000)
+        self.page.locator('#start').click()
+        expect(status).to_contain_text('1 simulator running, started by this GUI', timeout=8000)
+        expect(status).to_contain_text('1 simulator running, started externally')
+        stop_external()
+        expect(status).not_to_contain_text('started externally', timeout=8000)
+
     def test_management_panels_all_and_reopening_preserve_server_connections(self):
         expect(self.page.locator('#console')).not_to_be_visible()
         expect(self.page.locator('#tests')).not_to_be_visible()
         expect(self.page.locator('#configuration')).not_to_be_visible()
         self.page.get_by_label('Target simulator', exact=True).select_option('all')
         self.page.get_by_role('button', name='Start', exact=True).click()
-        expect(self.page.locator('#management-status')).to_contain_text('GUI: 2', timeout=10000)
+        expect(self.page.locator('#management-status')).to_contain_text('2 simulators running, started by this GUI', timeout=10000)
         self.page.get_by_role("button", name="Communication", exact=True).click()
         expect(self.page.locator('#console')).to_be_visible()
         expect(self.page.locator('#tests')).not_to_be_visible()
@@ -117,7 +176,7 @@ class BrowserTests(unittest.TestCase):
         self.page.close()
         self.page = self.context.new_page()
         self.page.goto(self.url)
-        expect(self.page.locator('#management-status')).to_contain_text('GUI: 2', timeout=8000)
+        expect(self.page.locator('#management-status')).to_contain_text('2 simulators running, started by this GUI', timeout=8000)
         self.page.get_by_role("button", name="Communication", exact=True).click()
         expect(self.page.locator('#connection-state')).to_contain_text(re.compile("^connected"))
         self.assertEqual(self.page.evaluate('session.id'), sid)
@@ -178,7 +237,7 @@ class BrowserTests(unittest.TestCase):
 
     def start_and_connect(self):
         self.page.get_by_role("button", name="Start", exact=True).click()
-        expect(self.page.locator("#management-status")).to_contain_text("GUI: 1", timeout=8000)
+        expect(self.page.locator("#management-status")).to_contain_text("1 simulator running, started by this GUI", timeout=8000)
         self.page.get_by_role("button", name="Communication", exact=True).click()
         self.page.get_by_role("button", name="Connect", exact=True).click()
         expect(self.page.locator("#connection-state")).to_contain_text(re.compile("^connected"))
@@ -200,7 +259,7 @@ class BrowserTests(unittest.TestCase):
         other.goto(self.url)
         other.get_by_label("Target simulator", exact=True).select_option("receiver-b")
         other.get_by_role("button", name="Start", exact=True).click()
-        expect(other.locator("#management-status")).to_contain_text("GUI: 2", timeout=8000)
+        expect(other.locator("#management-status")).to_contain_text("2 simulators running, started by this GUI", timeout=8000)
         other.get_by_role("button", name="Communication", exact=True).click()
         other.get_by_role("button", name="Connect", exact=True).click()
         expect(other.locator("#connection-state")).to_contain_text(re.compile("^connected"))
@@ -210,6 +269,7 @@ class BrowserTests(unittest.TestCase):
         self.page.get_by_label("Console mode", exact=True).select_option("raw")
         expect(self.page.locator("#connection-state")).to_contain_text("disconnected")
         self.page.get_by_role("button", name="Connect", exact=True).click()
+        self.page.locator('#console > summary').click()
         self.page.get_by_label("Literal request", exact=True).fill(r"#nonsense <id=77>\n")
         self.page.get_by_role("button", name="Send literal request", exact=True).click()
         expect(self.page.locator("#wire-log")).to_contain_text(r"#error <id=77>: code=UNKNOWN_VERB", timeout=5000)
@@ -236,7 +296,7 @@ class BrowserTests(unittest.TestCase):
         self.page.get_by_role("button", name="Run checks", exact=True).click()
         expect(self.page.locator("#test-report")).to_contain_text('"passed": 10', timeout=15000)
         self.page.get_by_role("button", name="Stop", exact=True).click()
-        expect(self.page.locator("#management-status")).to_contain_text("GUI: 0", timeout=8000)
+        expect(self.page.locator("#management-status")).to_contain_text("0 simulators running, started by this GUI", timeout=8000)
         self.assertEqual(self.errors, [])
 
     def test_scheduled_fault_waits_for_explicit_hardware_request(self):
@@ -264,7 +324,7 @@ class BrowserTests(unittest.TestCase):
         other.goto(self.url)
         other.get_by_label("Target simulator", exact=True).select_option("receiver-b")
         other.get_by_role("button", name="Start", exact=True).click()
-        expect(other.locator("#management-status")).to_contain_text("GUI: 2", timeout=8000)
+        expect(other.locator("#management-status")).to_contain_text("2 simulators running, started by this GUI", timeout=8000)
         other.get_by_role("button", name="Configuration", exact=True).click()
         self.page.get_by_role("button", name="Configuration", exact=True).click()
         # This page saves a new endpoint and configured identity for receiver-a.
@@ -303,7 +363,7 @@ class BrowserTests(unittest.TestCase):
         self.page.get_by_role("button", name="Configuration", exact=True).click()
         self.page.get_by_label("Initial frequency (GHz)", exact=True).fill("6")
         self.page.get_by_role("button", name="Stop", exact=True).click()
-        expect(self.page.locator("#management-status")).to_contain_text("GUI: 0", timeout=8000)
+        expect(self.page.locator("#management-status")).to_contain_text("0 simulators running, started by this GUI", timeout=8000)
         expect(self.page.get_by_label("Initial frequency (GHz)", exact=True)).to_have_value("6")
 
     def test_configuration_save_apply_and_read_only_checks(self):

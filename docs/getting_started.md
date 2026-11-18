@@ -328,18 +328,18 @@ Launching the GUI does not start a simulator automatically.
 
 1. Select **Simulators**, choose **receiver-a**, click **Start**, and wait for its running state.
    This confirms the local process, not physical-hardware health.
-2. Select the **Communication** workspace and **receiver-a**. In **Console**, keep
+2. Select the **Communication** workspace and **receiver-a**. In **Connection**, keep
    **Guided** mode and click **Connect**. This explicitly reads configuration/status.
    The connection stays on the server when you close or reload the browser tab.
 3. In **Receiver operations**, enter a frequency and click **Set frequency** / **Read frequency**.
-   Inspect the parsed response and actual TX/RX bytes. The receiver applies
+   Inspect the parsed response; expand **Console** below the operations to see actual TX/RX bytes. The receiver applies
    `5.1234565` GHz as `5.123457` GHz; input spelling reaches firmware unchanged.
 4. Click **Run calibrate**, then **Read procedure status**. Explicitly enable
    **Monitor procedure** for status requests every 500 ms; it is off by default.
    Open **Scan settings** for a ten-point scan; choose **Procedure → scan** to
    inspect/cancel it. This console does not associate scientific data with scan points.
 5. Select **Raw** in **Console mode** (disconnecting the old connection), click
-   **Connect**, enter `#nonsense <id=77>\n`, then **Send literal request**.
+   **Connect**, expand **Console**, enter `#nonsense <id=77>\n`, then **Send literal request**.
    Expect `code=UNKNOWN_VERB`. Raw escapes are `\n`, `\r`, `\t`, `\xNN`, and `\\`;
    no LF/ID/probe/retry is added. **Literal line** instead appends LF. A two-second
    no-data notice leaves TCP open. Invalid protocol messages are allowed.
