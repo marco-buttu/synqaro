@@ -6,7 +6,11 @@ Provide Synqaro’s development agent with a description of your hardware: what 
 
 **If the hardware already exists**, provide its documentation and communication protocol. Integration can use the existing firmware without requiring it to adopt Synqaro’s protocol.
 
-The agent will ask for missing information and prepare a specification for you to review and approve. This specification becomes the reference for firmware, simulator, communication library, and tests.
+The agent reads the available specifications, asks for missing information and prepares a contract for you to review and approve. The approved contract is the reference for firmware, simulator, communication library, tests, documentation and GUI operations. Changes to that behavior must be reflected in the contract and approved before implementation.
+
+The [hardware integration workflow](hardware_integration_workflow.md) defines the agent's required reading, questions, completeness review and approval process. It also explains how to handle requirements that would change Synqaro itself. Such changes require separate maintainer approval; they are not automatically authorized by approving a hardware contract.
+
+This workflow is documented now. The common structured schema, automated contract validation and contract-driven GUI are subsequent steps tracked in [issue #38](https://github.com/marco-buttu/synqaro/issues/38).
 
 Instructions for interacting with the agent will be added when that interface is available.
 
