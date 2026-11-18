@@ -8,6 +8,7 @@ from pathlib import Path
 import socket
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import httpx
 
@@ -43,6 +44,29 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
 
     async def post(self, path, body):
         return await self.client.post(path, json=body)
+
+    async def test_exclusive_takeover_does_not_reopen_during_shutdown(self):
+        await self.job('start')
+        manager = self.app.state.sessions
+        await manager.connect('receiver-a', 'managed', persistent=True)
+        draining, resume = asyncio.Event(), asyncio.Event()
+        original = manager.disconnect_target
+
+        async def delayed_drain(target):
+            await original(target)
+            draining.set()
+            await resume.wait()
+
+        with patch.object(manager, 'disconnect_target', delayed_drain):
+            takeover = asyncio.create_task(self.post('/api/sessions', {
+                'target': 'receiver-a', 'mode': 'line', 'persistent': True, 'exclusive': True}))
+            await asyncio.wait_for(draining.wait(), 3)
+            await manager.close()
+            resume.set()
+            response = await takeover
+        self.assertFalse(response.json()['ok'], response.text)
+        self.assertEqual(response.json()['error']['code'], 'SERVER_CLOSING')
+        self.assertEqual(manager.list('receiver-a'), [])
 
     async def job(self, action, **extra):
         response = await self.post("/api/targets/receiver-a/lifecycle", {"action": action, **extra})
@@ -90,13 +114,45 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(row['sessions'][0]['state'], 'connected')
         again = await self.post('/api/sessions', {'target':'receiver-a', 'mode':'managed', 'persistent':True})
         self.assertEqual(again.json()['result']['id'], sid)
-        conflict = await self.post('/api/sessions', {'target':'receiver-a', 'mode':'raw', 'persistent':True})
+        manual = await self.post('/api/sessions', {'target':'receiver-a', 'mode':'raw', 'persistent':True})
+        self.assertEqual(manual.status_code, 200, manual.text)
+        self.assertNotEqual(manual.json()['result']['id'], sid)
+        conflict = await self.post('/api/sessions', {'target':'receiver-a', 'mode':'line', 'persistent':True})
         self.assertEqual(conflict.status_code, 409)
-        self.assertEqual(len(self.app.state.sessions._sessions), 1)
+        self.assertEqual(len(self.app.state.sessions._sessions), 2)
         await self.app.state.sessions.close()
         self.assertFalse(self.app.state.sessions._sessions)
         await self.app.state.jobs.close()
         self.assertEqual((await self.app.state.runtime.inspect(self.snapshot.entries['receiver-a'].config))['outcome'], 'stopped')
+
+    async def test_exclusive_console_releases_operations_and_blocks_other_connections(self):
+        await self.job('start')
+        managed = (await self.post('/api/sessions', {'target':'receiver-a', 'mode':'managed', 'persistent':True})).json()['result']
+        rejected = await self.post('/api/sessions', {'target':'receiver-a', 'mode':'managed', 'persistent':True, 'exclusive':True})
+        self.assertEqual(rejected.status_code, 400)
+        manual = await self.post('/api/sessions', {'target':'receiver-a', 'mode':'line', 'persistent':True, 'exclusive':True})
+        self.assertEqual(manual.status_code, 200, manual.text)
+        sid = manual.json()['result']['id']
+        self.assertTrue(manual.json()['result']['exclusive'])
+        self.assertNotIn(managed['id'], self.app.state.sessions._sessions)
+        for mode, persistent in [('managed', True), ('raw', False)]:
+            blocked = await self.post('/api/sessions', {'target':'receiver-a', 'mode':mode, 'persistent':persistent})
+            self.assertEqual(blocked.status_code, 409, blocked.text)
+        closed = await self.client.request('DELETE', '/api/sessions/'+sid, json={})
+        self.assertEqual(closed.status_code, 200, closed.text)
+        reopened = await self.post('/api/sessions', {'target':'receiver-a', 'mode':'managed', 'persistent':True})
+        self.assertEqual(reopened.status_code, 200, reopened.text)
+
+    async def test_concurrent_managed_open_cannot_bypass_exclusive_console(self):
+        await self.job('start')
+        results = await asyncio.gather(
+            self.post('/api/sessions', {'target':'receiver-a','mode':'managed','persistent':True}),
+            self.post('/api/sessions', {'target':'receiver-a','mode':'raw','persistent':True,'exclusive':True}))
+        self.assertEqual(results[1].status_code, 200, results[1].text)
+        sessions = self.app.state.sessions.list('receiver-a')
+        self.assertEqual(len(sessions), 1)
+        self.assertEqual(sessions[0]['purpose'], 'console')
+        self.assertTrue(sessions[0]['exclusive'])
 
     async def test_hardware_connection_failure_is_retained_without_simulator_lifecycle(self):
         response = await self.post('/api/targets/physical-b/connection', {'action':'connect'})

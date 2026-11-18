@@ -292,9 +292,10 @@ def create_app(store, *, runtime_root=None, origin="http://127.0.0.1:8765"):
 
     @app.post("/api/sessions")
     async def connect(request: Request):
-        data = await payload(request, ("target", "mode"), ("persistent",))
+        data = await payload(request, ("target", "mode"), ("persistent", "exclusive"))
         if type(data["target"]) is not str or type(data["mode"]) is not str: raise ValueError("Target/mode must be strings")
-        return success(await app.state.sessions.connect(data["target"], data["mode"], persistent=data.get("persistent", False)))
+        return success(await app.state.sessions.connect(data["target"], data["mode"],
+            persistent=data.get("persistent", False), exclusive=data.get("exclusive", False)))
 
     @app.post("/api/sessions/{sid}/requests")
     async def submit(sid: str, request: Request):

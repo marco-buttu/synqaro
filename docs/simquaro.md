@@ -147,8 +147,11 @@ reported separately; a running simulator process is not proof of hardware health
 
 In the **Workspace** panel, click **Communication**, **Test**, or **Configuration**
 to display its tools. The selected button is highlighted; initially none is selected.
-In Communication, connection controls and state remain visible above **Receiver
-operations**. **Console** follows the operations and starts collapsed; expanding or
+In Communication, **Receiver operations** appears first and connects through the
+managed client on the first explicit operation. **Receiver console communication**
+below it combines manual connection controls, Mode and the collapsed **Console**.
+The manual modes are Literal line and Raw bytes; they do not affect operations.
+Expanding or
 collapsing it neither opens nor closes a TCP connection, and wire evidence remains
 available within its normal history limits. Simulator counts describe currently
 running instances started by this GUI; external instances are listed separately
@@ -160,15 +163,23 @@ also allow selecting configured, inactive targets. No CLI subprocess is used:
 protocol operations use the production client or shared raw TCP transport.
 
 GUI connections belong to the server and survive browser closure/reload. Tabs
-using the same target share its persistent console connection and bounded evidence.
-Disconnect and mode changes affect that shared connection. Selecting another
-target or workspace does not close it. Guided mode uses normal client bootstrap/
-recovery; line/raw mode sends no probes, IDs, hidden polling or retries. Explicit
+using the same target share one operations connection and one manual console
+connection, with separate evidence. Manual Disconnect and mode changes affect only
+the console; **Disconnect operations** and **Reconnect operations** control the
+managed connection. Selecting another target or workspace does not close either.
+Operations retain normal client bootstrap and recovery, including reconnection and
+state reads after failure, without replaying uncertain modifying commands.
+Line/raw mode sends no probes, IDs, hidden polling or retries. Explicit
 monitoring sends procedure status every 500 ms while enabled in Communication;
 normal event/job polling reads server memory. Management polling queries local
 simulator control, not hardware TCP. A server restart never silently reconnects hardware.
 
-Limits: 16 sessions total/four per target, one persistent GUI connection per target,
+For single-client hardware, **Exclusive access** on manual Connect requires confirmation
+before closing this server's existing target connections. It blocks other connection
+opens to that target until manual Disconnect, including across browser tabs. It cannot
+disconnect external applications. Opening the workspace itself sends no hardware probes.
+
+Limits: 16 sessions total/four per target, up to two persistent GUI connections per target,
 256 events/1 MiB per session with cursor-gap markers; 16 active jobs,
 64 retained completed reports, 1 MiB per report. No unbounded queue or permanent
 job log. Checks use a dedicated client, require other GUI connections closed and

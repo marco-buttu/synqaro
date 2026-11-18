@@ -46,6 +46,7 @@ class _Session:
     source: str
     deadline: float
     persistent: bool = False
+    exclusive: bool = False
     state: str = "connecting"
     client: object = None
     connection: object = None
@@ -68,6 +69,7 @@ class SessionManager:
         self._sessions = {}
         self._sweeper = None
         self._closed = False
+        self._connect_lock = asyncio.Lock()
 
     def _get(self, sid):
         if sid not in self._sessions:
@@ -90,18 +92,31 @@ class SessionManager:
             session.events.popleft()
             session.total_bytes -= session.sizes.popleft()
 
-    async def connect(self, target, mode, *, persistent=False, allow_busy=False):
+    async def connect(self, target, mode, *, persistent=False, allow_busy=False, exclusive=False):
+        # Serialize opens/takeovers, including callers in other tabs. Existing
+        # traffic is not serialized here; takeover closes pending work explicitly.
+        async with self._connect_lock:
+            return await self._connect(target, mode, persistent=persistent,
+                                       allow_busy=allow_busy, exclusive=exclusive)
+
+    async def _connect(self, target, mode, *, persistent, allow_busy, exclusive):
         if mode not in ("managed", "line", "raw"):
             raise ValueError("Choose managed, line, or raw mode")
         if type(persistent) is not bool: raise ValueError("persistent must be a boolean")
+        if type(exclusive) is not bool: raise ValueError("exclusive must be a boolean")
+        if exclusive and (not persistent or mode == "managed"):
+            raise ValueError("Exclusive access is available only for a persistent manual console")
         snapshot = await configuration_io(self.store.load)
         entry = ConfigurationService.target(snapshot, target)
         if self._closed: raise ServiceError("SERVER_CLOSING", "Server is shutting down")
         if self.busy(target) and not allow_busy: raise ServiceError("TARGET_BUSY", "Wait for this target's job to finish")
+        existing_target = [s for s in self._sessions.values() if s.target == target]
+        if any(s.exclusive for s in existing_target) and not (persistent and mode != "managed" and exclusive):
+            raise ServiceError("TARGET_BUSY", "Exclusive console access is active; disconnect that console before using other connections")
         if persistent:
-            for existing in self._sessions.values():
-                if existing.target == target and existing.persistent:
-                    if existing.mode != mode:
+            for existing in existing_target:
+                if existing.persistent and (existing.mode == "managed") == (mode == "managed"):
+                    if existing.mode != mode or existing.exclusive != exclusive:
                         raise ServiceError("TARGET_BUSY", "Disconnect the current console before changing its mode")
                     if existing.state == "connecting":
                         raise ServiceError("TARGET_BUSY", "Connection is being established; refresh its state")
@@ -109,11 +124,17 @@ class SessionManager:
                     if history["state"] != "connected":
                         raise ServiceError("DISCONNECTED", "The connection is closed; disconnect and connect again, or use Reconnect")
                     return history
+        if exclusive:
+            await self.disconnect_target(target)
+            # Draining can yield to shutdown or a lifecycle job. Do not reserve
+            # a replacement connection after either has taken ownership.
+            if self._closed: raise ServiceError("SERVER_CLOSING", "Server is shutting down")
+            if self.busy(target) and not allow_busy: raise ServiceError("TARGET_BUSY", "Wait for this target's job to finish")
         if len(self._sessions) >= 16 or sum(s.target == target for s in self._sessions.values()) >= 4:
             raise ServiceError("SESSION_LIMIT", "Close an unused connection before connecting again")
         session = _Session(secrets.token_urlsafe(24), target, mode, entry.config,
                            snapshot.revision, snapshot.source, self.clock.monotonic() + 120,
-                           persistent=persistent)
+                           persistent=persistent, exclusive=exclusive)
         self._sessions[session.id] = session  # Reserve before any connection await.
         if self._sweeper is None: self._sweeper = asyncio.create_task(self._sweep())
         try:
@@ -208,6 +229,8 @@ class SessionManager:
             state = "disconnected"
         return {"id": session.id, "target": session.target, "mode": session.mode,
                 "state": state, "persistent": session.persistent,
+                "purpose": "operations" if session.mode == "managed" else "console",
+                "exclusive": session.exclusive,
                 "revision": session.revision, "source": session.source,
                 "host": session.config.host, "port": session.config.port,
                 "expected_hardware_id": (session.client.expected_hardware_id if session.client is not None else
