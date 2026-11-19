@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Synqaro hardware contract, schema version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "revision", "status", "hardware", "protocol", "sources", "properties", "procedures", "errors", "requirements", "scenarios", "dependencies", "open_items", "approval"],
+  "properties": {
+    "schema_version": {"const": 1, "type": "integer"},
+    "id": {"$ref": "#/$defs/name"},
+    "revision": {"$ref": "#/$defs/text"},
+    "status": {"enum": ["draft", "approved"]},
+    "hardware": {
+      "type": "object", "additionalProperties": false,
+      "required": ["model", "description", "firmware_versions"],
+      "properties": {
+        "model": {"$ref": "#/$defs/text"},
+        "description": {"$ref": "#/$defs/text"},
+        "firmware_versions": {"$ref": "#/$defs/texts"}
+      }
+    },
+    "protocol": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "version", "specification"],
+      "properties": {
+        "name": {"$ref": "#/$defs/text"}, "version": {"$ref": "#/$defs/text"},
+        "specification": {"$ref": "#/$defs/reference"}
+      }
+    },
+    "sources": {"type": "object", "minProperties": 1, "propertyNames": {"$ref": "#/$defs/name"}, "additionalProperties": {"$ref": "#/$defs/reference"}},
+    "properties": {"type": "object", "propertyNames": {"$ref": "#/$defs/name"}, "additionalProperties": {"$ref": "#/$defs/property"}},
+    "procedures": {"type": "object", "propertyNames": {"$ref": "#/$defs/name"}, "additionalProperties": {"$ref": "#/$defs/procedure"}},
+    "errors": {"type": "object", "propertyNames": {"$ref": "#/$defs/name"}, "additionalProperties": {"$ref": "#/$defs/error"}},
+    "requirements": {"type": "object", "minProperties": 1, "propertyNames": {"$ref": "#/$defs/name"}, "additionalProperties": {"$ref": "#/$defs/requirement"}},
+    "scenarios": {"type": "object", "minProperties": 1, "propertyNames": {"$ref": "#/$defs/name"}, "additionalProperties": {"$ref": "#/$defs/scenario"}},
+    "dependencies": {"type": "object", "propertyNames": {"$ref": "#/$defs/name"}, "additionalProperties": {"$ref": "#/$defs/dependency"}},
+    "open_items": {"type": "object", "propertyNames": {"$ref": "#/$defs/name"}, "additionalProperties": {"$ref": "#/$defs/open_item"}},
+    "approval": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/approval"}]}
+  },
+  "$defs": {
+    "text": {"type": "string", "minLength": 1, "pattern": "\\S"},
+    "name": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"},
+    "texts": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/text"}},
+    "refs": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/name"}},
+    "required_refs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/name"}},
+    "reference": {
+      "type": "object", "additionalProperties": false, "required": ["document", "revision"],
+      "properties": {"document": {"$ref": "#/$defs/text"}, "revision": {"$ref": "#/$defs/text"}}
+    },
+    "value": {
+      "type": "object", "additionalProperties": false, "required": ["type", "unit", "description"],
+      "properties": {
+        "type": {"enum": ["number", "integer", "string", "boolean", "array", "object"]},
+        "unit": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/text"}]},
+        "description": {"$ref": "#/$defs/text"},
+        "minimum": {"type": "number"}, "maximum": {"type": "number"},
+        "resolution": {"type": "number", "exclusiveMinimum": 0},
+        "representation": {"$ref": "#/$defs/text"},
+        "enum": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": ["string", "number", "boolean"]}},
+        "minLength": {"type": "integer", "minimum": 0}, "maxLength": {"type": "integer", "minimum": 0},
+        "minItems": {"type": "integer", "minimum": 0}, "maxItems": {"type": "integer", "minimum": 0},
+        "items": {"$ref": "#/$defs/value"},
+        "fields": {"type": "object", "minProperties": 1, "propertyNames": {"$ref": "#/$defs/name"}, "additionalProperties": {"$ref": "#/$defs/value"}}
+      },
+      "dependentRequired": {"resolution": ["representation"]}
+    },
+    "property": {
+      "type": "object", "additionalProperties": false,
+      "required": ["description", "access", "value", "availability", "requirements", "errors"],
+      "properties": {
+        "description": {"$ref": "#/$defs/text"}, "access": {"enum": ["readonly", "readwrite"]},
+        "value": {"$ref": "#/$defs/value"}, "availability": {"$ref": "#/$defs/text"},
+        "write_effect": {"$ref": "#/$defs/text"},
+        "requirements": {"$ref": "#/$defs/required_refs"}, "errors": {"$ref": "#/$defs/refs"}
+      },
+      "if": {"properties": {"access": {"const": "readwrite"}}}, "then": {"required": ["write_effect"]},
+      "else": {"not": {"required": ["write_effect"]}}
+    },
+    "procedure": {
+      "type": "object", "additionalProperties": false,
+      "required": ["description", "parameters", "preconditions", "effects", "states", "initial_state", "terminal_states", "transitions", "outcomes", "cancellation", "timing", "requirements", "errors"],
+      "properties": {
+        "description": {"$ref": "#/$defs/text"}, "effects": {"$ref": "#/$defs/text"},
+        "parameters": {"type": "object", "propertyNames": {"$ref": "#/$defs/name"}, "additionalProperties": {
+          "type": "object", "additionalProperties": false, "required": ["required", "value"],
+          "properties": {"required": {"type": "boolean"}, "value": {"$ref": "#/$defs/value"}, "when_omitted": {"$ref": "#/$defs/text"}},
+          "if": {"properties": {"required": {"const": false}}}, "then": {"required": ["when_omitted"]}
+        }},
+        "preconditions": {"type": "array", "items": {"$ref": "#/$defs/text"}},
+        "states": {"type": "object", "minProperties": 1, "propertyNames": {"$ref": "#/$defs/name"}, "additionalProperties": {"$ref": "#/$defs/text"}},
+        "initial_state": {"$ref": "#/$defs/name"}, "terminal_states": {"$ref": "#/$defs/required_refs"},
+        "transitions": {"type": "array", "items": {
+          "type": "object", "additionalProperties": false, "required": ["from", "to", "condition"],
+          "properties": {"from": {"$ref": "#/$defs/name"}, "to": {"$ref": "#/$defs/name"}, "condition": {"$ref": "#/$defs/text"}}
+        }},
+        "outcomes": {"type": "object", "minProperties": 1, "propertyNames": {"$ref": "#/$defs/name"}, "additionalProperties": {"$ref": "#/$defs/text"}},
+        "cancellation": {
+          "type": "object", "additionalProperties": false, "required": ["supported", "allowed_states", "semantics"],
+          "properties": {"supported": {"type": "boolean"}, "allowed_states": {"$ref": "#/$defs/refs"}, "semantics": {"$ref": "#/$defs/text"}}
+        },
+        "timing": {
+          "type": "object", "additionalProperties": false, "required": ["completion"],
+          "properties": {"completion": {"$ref": "#/$defs/text"}, "deadline_ms": {"type": "integer", "exclusiveMinimum": 0}}
+        },
+        "requirements": {"$ref": "#/$defs/required_refs"}, "errors": {"$ref": "#/$defs/refs"}
+      }
+    },
+    "error": {
+      "type": "object", "additionalProperties": false, "required": ["description", "consequence", "recovery"],
+      "properties": {"description": {"$ref": "#/$defs/text"}, "consequence": {"$ref": "#/$defs/text"}, "recovery": {"$ref": "#/$defs/text"}, "specification": {"$ref": "#/$defs/reference"}}
+    },
+    "requirement": {
+      "type": "object", "additionalProperties": false, "required": ["statement", "sources", "status", "dependencies"],
+      "properties": {"statement": {"$ref": "#/$defs/text"}, "sources": {"$ref": "#/$defs/required_refs"}, "status": {"enum": ["proposed", "confirmed"]}, "dependencies": {"$ref": "#/$defs/refs"}, "rationale": {"$ref": "#/$defs/text"}}
+    },
+    "scenario": {
+      "type": "object", "additionalProperties": false, "required": ["requirements", "given", "when", "then", "level"],
+      "properties": {"requirements": {"$ref": "#/$defs/required_refs"}, "given": {"$ref": "#/$defs/text"}, "when": {"$ref": "#/$defs/text"}, "then": {"$ref": "#/$defs/text"}, "level": {"enum": ["simulator", "hardware", "both"]}}
+    },
+    "dependency": {
+      "type": "object", "additionalProperties": false, "required": ["description", "proposal", "status"],
+      "properties": {"description": {"$ref": "#/$defs/text"}, "proposal": {"$ref": "#/$defs/reference"}, "status": {"enum": ["awaiting_approval", "approved_pending_verification", "available", "rejected", "deferred"]}, "evidence": {"$ref": "#/$defs/reference"}},
+      "if": {"properties": {"status": {"const": "available"}}}, "then": {"required": ["evidence"]}
+    },
+    "open_item": {
+      "type": "object", "additionalProperties": false, "required": ["question", "impact", "owner", "requirements", "disposition"],
+      "properties": {"question": {"$ref": "#/$defs/text"}, "impact": {"$ref": "#/$defs/text"}, "owner": {"$ref": "#/$defs/text"}, "requirements": {"$ref": "#/$defs/refs"}, "disposition": {"enum": ["blocking", "excluded"]}, "exclusion_reason": {"$ref": "#/$defs/text"}},
+      "if": {"properties": {"disposition": {"const": "excluded"}}}, "then": {"required": ["exclusion_reason"]}
+    },
+    "approval": {
+      "type": "object", "additionalProperties": false, "required": ["by", "at", "revision", "evidence"],
+      "properties": {"by": {"$ref": "#/$defs/text"}, "at": {"type": "string", "format": "date"}, "revision": {"$ref": "#/$defs/text"}, "evidence": {"$ref": "#/$defs/reference"}}
+    }
+  }
+}
