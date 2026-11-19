@@ -112,20 +112,92 @@ detail; it must not be used to dismiss a relevant requirement outside its headin
 
 ## Assess fit before accepting a solution
 
-Distinguish the operational need from the team's suggested implementation. Check
-whether existing capabilities satisfy it before proposing a new abstraction or
-extension. Explain whether a limitation comes from the hardware, the protocol, the
-current implementation or a deliberate architectural constraint.
+Perform this assessment during the interview and before including a requirement in
+the contract proposed for approval. Revisit it when the requirement or its evidence
+changes. Record the result in the integration issue or draft, rather than leaving it
+only in the conversation. Keep routine assessments short; a supported requirement
+does not need a separate architecture proposal.
 
-Challenge solutions that introduce disproportionate complexity. Compare simpler
-alternatives and their effects on usability, compatibility, verification and
-maintenance by developers and agents. A constraint may deserve revision, but a
-request to integrate hardware does not itself authorize that revision.
+### Establish the need and locate the limitation
 
-If a requirement needs a framework or shared-protocol change, record the dependency
-and prepare a separate proposal for maintainers, with alternatives, benefits, costs
-and affected contracts. Obtain maintainer approval before implementing it. Do not
-present unapproved capabilities as available or hide them in the hardware contract.
+1. State the operational outcome independently of the team's proposed solution.
+   Include measurable acceptance conditions where relevant, such as timing,
+   accuracy or failure behavior. If these are unknown, ask rather than inventing them.
+2. Check existing capabilities, supported configuration and model-specific adapters
+   against that outcome. Cite the relevant specification revision and implementation
+   or test evidence. Distinguish documented guarantees, observed behavior and
+   unverified assumptions: an implemented feature is not proof of every guarantee.
+3. If there is a gap, identify its source using the table below. More than one source
+   may apply. If the cause is uncertain, record the missing evidence and how to obtain
+   it; do not present an architectural extension as the established solution.
+
+| Source of limitation | What to establish | Consequence |
+| --- | --- | --- |
+| Hardware | Does the physical design or existing firmware support the required capability? | Software cannot promise a physical capability that the hardware lacks. Clarify hardware changes or a feasible alternative with the team. |
+| Communication protocol | Does the selected protocol express the operation and provide the required guarantees? | Consider an existing suitable interface or a proposal to extend the protocol; do not invent wire behavior silently. |
+| Current implementation | Does an approved contract already require behavior that the code lacks or implements incorrectly? | Treat it as an implementation gap or defect. A correction within the approved scope does not require a new contract; any necessary framework change still follows maintainer approval. |
+| Deliberate architectural constraint | Which approved decision establishes the boundary, and why? | Assess the rationale and alternatives. A constraint is neither automatically negotiable nor immutable; changing it requires an explicit maintainer decision. |
+
+Do not mistake an unapproved vision document or an implementation detail for a
+deliberate architectural constraint. Do not weaken the operational requirement
+silently to make it fit an existing implementation.
+
+### Compare alternatives and make a recommendation
+
+Consider reuse of existing capabilities first, then a model-specific implementation
+within existing interfaces, then changes to shared mechanisms where justified.
+Compare the viable alternatives, not a fixed number of artificial options. Include
+deferring or declining the unsupported requirement when no acceptable solution exists.
+
+For each viable option, explain:
+
+- Whether it meets the operational need and which limitations remain.
+- Which contracts, hardware models, clients and existing deployments it affects,
+  including compatibility and migration consequences.
+- What complexity it adds: dependencies, configuration, duplicated behavior,
+  abstractions, failure modes and operational steps.
+- How a user would operate and diagnose it, and how developers and agents would
+  understand, test and maintain it over time.
+- Which verification scenarios and resources would establish its guarantees.
+
+Recommend the smallest sufficient solution and explain the trade-off. Challenge a
+request whose maintenance or usability cost is disproportionate to its benefit,
+even when the team asks for it explicitly. Being able to generate the code quickly
+is not evidence that the resulting system will be simple to maintain. Conversely,
+do not reject a justified extension merely because the current system lacks it.
+
+### Record the decision and control dependencies
+
+Use a short assessment record containing: requirement reference, operational need,
+proposed solution, evidence and gaps, limitation source, alternatives and impacts,
+recommendation, decision status and rationale. Link it from the draft rather than
+duplicating it in several documents. Record who decided, when and the exact scope;
+until the appropriate person decides, the recommendation remains a proposal.
+
+For a framework or shared-protocol change, create a separate linked proposal for
+maintainers before implementation. Include benefits, costs, alternatives, affected
+contracts, compatibility consequences and the verification plan. Record explicit
+maintainer approval of its revision and scope. Hardware-team contract approval does
+not replace this decision, even if the same person performs both roles. If no
+maintainer decision is available, pause the dependent work and continue independent
+work within the approved scope.
+
+Mark each affected draft requirement as depending on that proposal. Distinguish
+**awaiting approval**, **approved but not implemented/verified**, **available with
+evidence**, and **rejected or deferred**. Approval alone does not make a capability
+available. Unapproved dependencies block the affected implementation scope; an
+approved extension may be developed within its authorized scope, but must be
+implemented and verified before the dependent capability is advertised as available.
+If the extension is rejected or deferred, agree an alternative or explicit scope
+exclusion with the team; do not quietly remove its need or claim it is satisfied.
+
+For example, a team may propose more timestamp digits to associate scientific data
+with frequency during a scan. First establish the required association accuracy.
+The [current protocol's open issues](hardware_protocol.md#associating-scan-data-with-frequency)
+explain why finer timestamp resolution alone does not guarantee that association.
+Assess synchronization or coordinated acquisition against the actual need; neither
+is implicitly approved or supplied by the current receiver. Record any proposed
+extension and its approval dependency before promising the capability.
 
 ## Draft, review and approve
 
