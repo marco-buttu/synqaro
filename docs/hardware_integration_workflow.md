@@ -41,8 +41,9 @@ change the expected result to match the code.
 ## Current status and required reading
 
 This workflow is a repository instruction, not an implemented agent platform.
-The common schema, contract validator and migration of the fictitious receiver
-remain later work in [issue #38](https://github.com/marco-buttu/synqaro/issues/38).
+The [versioned schema and authoring validator](../contracts/README.md) are available.
+Migration of the fictitious receiver remains later work in
+[issue #38](https://github.com/marco-buttu/synqaro/issues/38).
 Do not claim that current code, tests or GUI are already generated from one contract.
 
 At the start of an integration, read:
@@ -51,9 +52,10 @@ At the start of an integration, read:
 2. [The hardware-contract introduction](hardware_contract.md) and
    [the README overview](../README.md#overview), for the user's workflow and the
    distinction between hardware, Devices and orchestration.
-3. The current common schema and its validation instructions under `contracts/`,
-   when available. Until they exist, record that limitation explicitly; a prose
-   draft is not a machine-validated contract. Never claim to have read a missing file.
+3. The [contract format and validation instructions](../contracts/README.md) and
+   [schema version 1](../contracts/schema-v1.json), or the applicable later schema
+   when introduced. If a required version is unavailable, record that limitation;
+   do not substitute another version silently or claim validation against a missing file.
 4. The hardware team's specifications, existing approved contract and amendments,
    model/firmware identities, interface documentation and relevant issue decisions.
    Record the version or revision of each source used. For an existing model, review
@@ -202,7 +204,7 @@ extension and its approval dependency before promising the capability.
 ## Draft, review and approve
 
 Maintain a versioned draft in the repository and link it from the integration issue.
-Until the common schema is available, label the draft's format and validation limits.
+Use the applicable schema and label the draft's revision and validation limits.
 For each requirement or decision, retain its source, rationale where significant,
 and status: proposed, confirmed by the team, not applicable with a reason, or open.
 Confirmed answers contribute to the draft; they are not approval of the whole contract.
@@ -221,7 +223,8 @@ Before presenting the contract for approval, check:
 - Contradictory sources and unapproved architectural dependencies are resolved or
   explicitly excluded from the proposed implementation scope.
 - Available schema and consistency checks pass, and their results are recorded.
-  Until those checks exist, state “manual review only”; do not call it automated validation.
+  If checks cannot be run, record the reason and resolve it before declaring the
+  contract validated; manual review alone is not automated validation.
 - A semantic review checks whether the requirements are meaningful and complete.
   Passing a schema validator cannot replace this review.
 

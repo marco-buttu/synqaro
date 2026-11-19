@@ -1,0 +1,101 @@
+# Authoring/validator example only: no implemented hardware and no team approval.
+schema_version: 1
+id: illustrative_indicator
+revision: "0.1"
+status: draft
+hardware:
+  model: illustrative_indicator
+  description: An invented indicator used only to demonstrate the contract format.
+  firmware_versions: ["example-1"]
+protocol:
+  name: illustrative_protocol
+  version: "1"
+  specification: {document: "Illustrative protocol, not an implemented interface", revision: "example-1"}
+sources:
+  design: {document: "Authoring example, not hardware-team evidence", revision: "0.1"}
+properties:
+  level:
+    description: Indicator brightness.
+    access: readwrite
+    value:
+      type: integer
+      unit: "%"
+      description: Whole percentage points.
+      minimum: 0
+      maximum: 100
+      resolution: 1
+      representation: Reject values that are not whole percentage points.
+    availability: Readable after startup, including while self_check runs.
+    write_effect: A successful reply means the requested level has been applied.
+    requirements: [level_behavior]
+    errors: [INVALID_LEVEL]
+procedures:
+  self_check:
+    description: Inspect the indicator without changing its level.
+    parameters: {}
+    preconditions: [No other self_check is running.]
+    effects: Keep the brightness unchanged during and after execution.
+    states: {running: Inspection in progress., succeeded: Inspection passed., failed: Inspection failed.}
+    initial_state: running
+    terminal_states: [succeeded, failed]
+    transitions:
+      - {from: running, to: succeeded, condition: Inspection passes.}
+      - {from: running, to: failed, condition: Inspection fails or exceeds its deadline.}
+    outcomes: {succeeded: Report a successful inspection., failed: Report CHECK_FAILED and preserve the level.}
+    cancellation:
+      supported: false
+      allowed_states: []
+      semantics: Reject cancellation; inspection continues independently of the connection.
+    timing:
+      completion: Report a terminal state within the deadline, including on failure.
+      deadline_ms: 1000
+    requirements: [check_behavior]
+    errors: [CHECK_FAILED]
+errors:
+  INVALID_LEVEL:
+    description: The requested level is outside the supported range or representation.
+    consequence: Preserve the previous level.
+    recovery: Correct the input before sending a new request.
+  CHECK_FAILED:
+    description: Inspection failed or exceeded its deadline.
+    consequence: The procedure terminates with state failed and leaves the level unchanged.
+    recovery: Inspect the hardware before relying on it.
+requirements:
+  level_behavior:
+    statement: Read the actual level and accept only whole percentages from 0 to 100.
+    sources: [design]
+    status: proposed
+    dependencies: []
+  check_behavior:
+    statement: self_check reports its outcome within one second without modifying brightness.
+    sources: [design]
+    status: proposed
+    dependencies: []
+scenarios:
+  set_level:
+    requirements: [level_behavior]
+    given: An available indicator at level 10.
+    when: Set level to 50 and then read it.
+    then: The write succeeds and the read returns 50 percent.
+    level: both
+  reject_level:
+    requirements: [level_behavior]
+    given: An available indicator at level 10.
+    when: Request level 101.
+    then: Report INVALID_LEVEL and retain level 10.
+    level: both
+  check_failure:
+    requirements: [check_behavior]
+    given: An indicator at level 50 whose inspection cannot complete successfully.
+    when: Run self_check.
+    then: Within one second report failed with CHECK_FAILED; level remains 50.
+    level: both
+dependencies: {}
+open_items:
+  future_scope:
+    question: Which real hardware, if any, will use a similar interface?
+    impact: This illustrative draft cannot be approved for production hardware.
+    owner: Example author
+    requirements: []
+    disposition: blocking
+approval: null

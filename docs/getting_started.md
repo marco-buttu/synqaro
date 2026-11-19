@@ -488,10 +488,16 @@ Python 3.12+ interpreter and run the base and web/browser suites:
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install -e '.[web,browser-test]'
+.venv/bin/python -m pip install -e '.[web,browser-test,contracts]'
 PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -t . -v
 PYTHONPATH=src .venv/bin/python -m unittest discover -s tests/web -v
+.venv/bin/python tools/validate_contracts.py
 ```
+
+The base suite includes contract tests when the `contracts` extra is installed;
+without it they are explicitly skipped. Contract changes must run those tests with
+the extra installed. See [contract authoring and validation](../contracts/README.md)
+for the checks and their limits.
 
 Browser tests use installed Google Chrome with isolated temporary contexts and
 normal Chromium sandbox. Playwright is developer tooling, not needed for manual

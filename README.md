@@ -74,5 +74,6 @@ Start with the first two steps of the development workflow:
 ### Development and testing
 
 - [Hardware integration workflow](docs/hardware_integration_workflow.md)
+- [Contract format and validation](contracts/README.md)
 - [Developer verification](docs/getting_started.md#scope-and-developer-verification)
 - [Simquaro operator guide](docs/simquaro.md)
