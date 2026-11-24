@@ -42,7 +42,8 @@ change the expected result to match the code.
 
 This workflow is a repository instruction, not an implemented agent platform.
 The [versioned schema and authoring validator](../contracts/README.md) are available.
-Migration of the fictitious receiver remains later work in
+The [fictitious receiver contract](../contracts/models/fictitious_receiver.yaml),
+revision 0.2, is approved; implementation migration remains tracked in
 [issue #38](https://github.com/marco-buttu/synqaro/issues/38).
 Do not claim that current code, tests or GUI are already generated from one contract.
 
@@ -82,6 +83,18 @@ and this reading record alone do not enforce that behavior.
 Start with the operational purpose: what the hardware must accomplish, what can be
 measured or controlled, and whether the hardware and firmware already exist. Extract
 known answers from the supplied material before asking questions.
+
+Determine the required protocol independently of firmware release versions. If
+firmware does not yet exist or compatibility has not been verified, leave the
+contract's firmware version list empty rather than inventing a release or assuming
+unrestricted compatibility. When compatible firmware already exists, prefer reuse
+where identity, requirements and conformance evidence justify it. If the team
+rejects reuse, ask for the reasons and assess whether they justify a replacement
+(e.g. unmet requirements, reliability, licensing or maintainability); do not assume
+that a new implementation is necessary. Record the decision and evidence. Add
+verified compatible releases later through a reviewed contract revision. Contract
+approval does not itself certify a firmware build or authorize production writes
+to unverified hardware.
 
 Use the following topics as a completeness checklist, not a questionnaire to send
 all at once. Ask one focused question at a time, explain why it matters when needed,
@@ -344,7 +357,9 @@ tests and reference documentation consistent in the delivered change.
 Record verification results and limitations. Simulator conformance does not prove
 physical-hardware behavior; identify the checks still needed on real equipment.
 
-For the current fictitious receiver, the approved behavioral specification remains
-in [Hardware Protocol](hardware_protocol.md). The structured-contract migration and
-GUI/test adaptation are later steps of issue #38 and require the agreed contract
-review; this workflow does not approve a replacement contract.
+For the current fictitious receiver, the [approved contract](../contracts/models/fictitious_receiver.yaml)
+revision 0.2 is the receiver-specific behavioral reference, together with the shared
+rules in [Hardware Protocol](hardware_protocol.md). Its approval is recorded in
+[the review](fictitious_receiver_contract_review.md#formal-approval). Implementation
+and GUI/test adaptation remain section 5 of issue #38; approval does not establish
+implementation conformance.

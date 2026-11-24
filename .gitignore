@@ -11,3 +11,4 @@ htmlcov/
 .simquaro-runtime/
 .simquaro-test-runtime/
 todo.txt
+clean_pycache.sh

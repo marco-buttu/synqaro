@@ -15,7 +15,7 @@
       "properties": {
         "model": {"$ref": "#/$defs/text"},
         "description": {"$ref": "#/$defs/text"},
-        "firmware_versions": {"$ref": "#/$defs/texts"}
+        "firmware_versions": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/text"}}
       }
     },
     "protocol": {

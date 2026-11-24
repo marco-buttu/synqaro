@@ -5,9 +5,10 @@ This directory defines the version-1 authoring format for hardware contracts.
 [integration workflow](../docs/hardware_integration_workflow.md) defines how an
 agent gathers requirements and obtains approval; it remains required reading.
 
-The fictitious receiver has **not** been migrated here. Its current specification
-remains in [Hardware Protocol](../docs/hardware_protocol.md); its contract and
-approval are section 4 of [issue #38](https://github.com/marco-buttu/synqaro/issues/38).
+The [fictitious receiver contract](models/fictitious_receiver.yaml), revision 0.2,
+is approved; see the [approval record](../docs/fictitious_receiver_contract_review.md#formal-approval).
+It references [Hardware Protocol](../docs/hardware_protocol.md) for shared rules.
+Implementation migration remains tracked in [issue #38](https://github.com/marco-buttu/synqaro/issues/38).
 The example below is not a supported hardware model or a replacement for that contract.
 
 ## Write a contract
@@ -28,7 +29,7 @@ as an approved hardware design or a questionnaire covering all cases.
 | --- | --- |
 | `schema_version` | Authoring format version; currently integer `1`. Not the wire protocol version. |
 | `id`, `revision`, `status` | Stable model-contract identifier, revision string and `draft`/`approved` declaration. |
-| `hardware` | Model, description and explicitly supported firmware version strings. No inferred version-range matching. |
+| `hardware` | Model, description and explicitly verified compatible firmware version strings (possibly empty). No inferred version-range matching. |
 | `protocol` | Protocol name/version and a versioned specification reference. Wire framing and message syntax are not redefined here. |
 | `sources` | Named source documents and their revisions. Requirement entries reference these keys. |
 | `properties` | Named values, access (`readonly`/`readwrite`), type/unit/constraints, availability, write effects, requirement and error references. |
@@ -46,6 +47,23 @@ must be nonempty. Map keys are stable, case-sensitive identifiers used by refere
 renaming one requires updating its references. Labels and explanations live in
 `description`, not in identifiers. Use the chosen protocol's naming rules as well:
 this generic schema does not enforce one particular protocol's identifiers.
+
+### Firmware compatibility
+
+`hardware.firmware_versions` is a required list of distinct nonempty strings, but
+may be empty in both draft and approved contracts. The protocol version is required
+independently. An empty list means no compatible firmware releases have been
+verified and declared; it is not a wildcard or permission to use any firmware.
+A contract may be approved before firmware exists. That approval alone does not
+establish production firmware compatibility. Record verified releases with build
+identity and conformance evidence in a reviewed contract revision; matching the
+protocol or a version label alone is insufficient. Authorized exploratory and
+simulator tests do not require a prior production compatibility declaration.
+
+The maintainer authorized relaxing this version-1 authoring constraint during
+issue #38. All previously valid contracts remain valid; older validators will
+reject the newly allowed empty list and must be updated to read such contracts.
+The field, its item type, and the wire protocol version are unchanged.
 
 ### Values and procedures
 
