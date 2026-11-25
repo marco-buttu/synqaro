@@ -149,7 +149,7 @@ Hermes Agent is only a candidate to investigate as an implementation of Smith or
 
 A persistent operational agent should answer routine questions by querying structured states, alarms, events, and diagnostic APIs. It should not need to reread source code to answer “Why is the antenna not moving?” Source analysis is appropriate for deeper development or fault investigation.
 
-Project knowledge must not depend on an agent's conversational memory. The repository, contracts, tests, decisions, and telemetry are the verifiable memory of the system.
+Project knowledge must not depend on an agent's conversational memory. The repository, contracts, tests, decisions, and telemetry are the verifiable memory of the system. For hardware integration, Smith must enforce the context-loading and approval gates defined in the [hardware integration workflow](hardware_integration_workflow.md); those mechanisms remain future implementation work.
 
 ## 6. AI-native lifecycle
 

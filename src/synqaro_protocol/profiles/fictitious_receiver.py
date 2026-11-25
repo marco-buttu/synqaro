@@ -3,14 +3,18 @@
 from datetime import datetime
 from decimal import Context, Decimal, InvalidOperation, localcontext
 import re
-from synqaro_protocol.codec import NumericToken
-from synqaro_protocol.client import LocalFailure, ClientContract
-
 from functools import partial
 from types import MappingProxyType
 
+from synqaro_protocol.codec import NumericToken
+from synqaro_protocol.client import LocalFailure, ClientContract, ClientLimits
+from ._receiver_contract_data import DATA
+
 from synqaro_protocol.errors import ErrorDefinition, ERROR_CATALOG as COMMON_ERRORS
 from synqaro_protocol.errors import render_error as _render_error
+
+_DESCRIPTOR = DATA["descriptor"]
+_FREQUENCY = DATA["properties"]["frequency"]["value"]
 
 
 _DEFINITIONS = (
@@ -28,21 +32,14 @@ render_error = partial(_render_error, catalog=ERROR_CATALOG)
 def _descriptor(response, expected_id):
     """Validate only the supported fixed receiver contract, with no fallback."""
     fields = response.fields
-    literals = {
-        "name": "configuration", "hardware_id": expected_id, "hardware_model": "fictitious_receiver",
-        "frequency_unit": "GHz", "frequency_rounding": "nearest_ties_up",
-        "calibrate_cancellation": "except_finalization", "scan_cancellation": "always",
-        "utc_clock_supported": True,
-    }
-    integers = {
-        "protocol_version": "1", "max_message_bytes": "4096", "incomplete_message_timeout_ms": "2000",
-        "max_pending_requests": "4", "max_tuning_ms": "1000", "calibrate_timeout_ms": "30000",
-        "scan_timeout_ms": "20000", "procedure_stop_timeout_ms": "5000", "scan_points": "10",
-        "scan_max_dwell_ms": "1000",
-    }
-    numbers = {"frequency_min": "1", "frequency_max": "10", "frequency_resolution": "0.000001"}
-    lists = {"readonly_properties": ["configuration"], "readwrite_properties": ["frequency"],
-             "supported_procedures": ["calibrate", "scan"], "sampled_at_properties": ["frequency"]}
+    literals = {key: value for key, value in _DESCRIPTOR.items() if type(value) in (str, bool)}
+    literals["hardware_id"] = expected_id
+    # Frequency bounds are numbers even when YAML uses integer spellings.
+    numbers = {key: str(value) for key, value in _DESCRIPTOR.items()
+               if key in ("frequency_min", "frequency_max", "frequency_resolution")}
+    integers = {key: value for key, value in _DESCRIPTOR.items()
+                if type(value) is int and key not in numbers}
+    lists = {key: value for key, value in _DESCRIPTOR.items() if isinstance(value, list)}
     valid = response.verb == "ok"
     valid &= all(type(fields.get(key)) is type(value) and fields.get(key) == value for key, value in literals.items())
     valid &= all(isinstance(fields.get(key), NumericToken) and len(fields[key].text) <= 64
@@ -89,22 +86,28 @@ def _general(response):
 def _refresh_usable(target, response):
     fields = response.fields
     valid = response.verb == "ok" and fields.get("name") == target[1]
-    if target[0] == "get":
+    if target[0] == "get" and target[1] == "frequency":
         value = fields.get("value")
         try:
             number = Decimal(value.text) if isinstance(value, NumericToken) and len(value.text) <= 64 else None
             # At most 64 input characters; range-check before scaled arithmetic.
             # Trailing zeroes are spelling, not evidence of off-grid precision.
             with localcontext(Context(prec=80)):
-                valid &= (number is not None and 1 <= number <= 10
-                          and number * 1000000 == (number * 1000000).to_integral_value()
-                          and fields.get("unit") == "GHz")
+                valid &= (number is not None and Decimal(str(_FREQUENCY["minimum"])) <= number <= Decimal(str(_FREQUENCY["maximum"]))
+                          and number % Decimal(str(_FREQUENCY["resolution"])) == 0
+                          and fields.get("unit") == _FREQUENCY["unit"])
         except InvalidOperation:
             valid = False
+    elif target[0] == "status" and target[1] in DATA["procedures"]:
+        valid &= fields.get("state") in ("unknown", "never_started", *DATA["procedures"][target[1]]["states"])
     else:
-        valid &= fields.get("state") in ("unknown", "never_started", "running", "cancelling", "succeeded", "failed", "cancelled")
+        valid = False
     if not valid:
         raise LocalFailure("UNUSABLE_REFRESH", response.request_id)
     return True
 
-FICTITIOUS_RECEIVER_CONTRACT = ClientContract(_descriptor, _general, _refresh_usable, ERROR_CATALOG)
+FICTITIOUS_RECEIVER_CONTRACT = ClientContract(
+    _descriptor, _general, _refresh_usable, ERROR_CATALOG,
+    ClientLimits(max_message_bytes=_DESCRIPTOR["max_message_bytes"],
+                 incomplete_timeout=_DESCRIPTOR["incomplete_message_timeout_ms"] / 1000,
+                 max_pending=_DESCRIPTOR["max_pending_requests"]))

@@ -482,23 +482,23 @@ configuration under your own change control when historical reconstruction matte
 Bulk scientific transfer and exact scan-frequency/data association remain open
 protocol topics. Simulator tests do not establish physical-hardware correctness.
 
-The following commands are for contributors working on source code. From the
-repository directory, create a separate development environment with a supported
-Python 3.12+ interpreter and run the base and web/browser suites:
+Set up the development environment (Python 3.12+) and run `pytest` as shown in
+[Installation](../README.md#development-dependencies). Pytest discovers the full
+suite, including web and existing unittest tests, without manual `PYTHONPATH`.
+Use `pytest tests/web` for web tests only, `pytest -rs` to show skip reasons,
+or `pytest --lf` to retry previous failures. Without activation, use `.venv/bin/pytest`.
+To run application source commands outside pytest, use `PYTHONPATH=src` and
+`.venv/bin/python`.
+
+With the development environment active, also check contract changes:
 
 ```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install -e '.[web,browser-test,contracts]'
-PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -t . -v
-PYTHONPATH=src .venv/bin/python -m unittest discover -s tests/web -v
-.venv/bin/python tools/validate_contracts.py
+python tools/validate_contracts.py
+python tools/generate_receiver_contract.py --check
 ```
 
-The base suite includes contract tests when the `contracts` extra is installed;
-without it they are explicitly skipped. Contract changes must run those tests with
-the extra installed. See [contract authoring and validation](../contracts/README.md)
-for the checks and their limits.
-
-Browser tests use installed Google Chrome with isolated temporary contexts and
-normal Chromium sandbox. Playwright is developer tooling, not needed for manual
-GUI use. Tested versions/results are recorded in the operator guide.
+See [contract authoring and validation](../contracts/README.md) for the checks
+and their limits. Do not count skipped tests as passed.
+Browser tests require installed Google Chrome; Playwright is not needed for
+manual GUI use. See the [receiver verification record](fictitious_receiver_contract_application.md)
+for current results and limitations.

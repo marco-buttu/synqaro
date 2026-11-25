@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 AVAILABLE = all(importlib.util.find_spec(name) for name in ('yaml', 'jsonschema'))
 
 
-@unittest.skipUnless(AVAILABLE, 'install development extra: pip install -e ".[contracts]"')
+@unittest.skipUnless(AVAILABLE, 'install development dependencies: bash install.sh --dev')
 class ContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -53,6 +53,24 @@ class ContractTests(unittest.TestCase):
         data = deepcopy(self.example)
         data['properties']['level']['access'] = 'writeonly'
         self.assertInvalid(data, 'access')
+
+    def test_firmware_versions_may_be_empty_before_firmware_exists(self):
+        for data in (deepcopy(self.example), self.approved()):
+            with self.subTest(status=data['status']):
+                data['hardware']['firmware_versions'] = []
+                self.assertEqual(self.validator.validate_document(data), [])
+
+    def test_firmware_versions_remain_explicit_unique_strings(self):
+        for value in (None, '0.1.0', [1], [True], [''], ['   '], ['0.1.0', '0.1.0']):
+            with self.subTest(value=value):
+                data = deepcopy(self.example)
+                data['hardware']['firmware_versions'] = value
+                self.assertInvalid(data, 'hardware.firmware_versions')
+        data = deepcopy(self.example)
+        del data['hardware']['firmware_versions']
+        self.assertInvalid(data, 'firmware_versions')
+        data['hardware']['firmware_versions'] = ['0.1.0', '0.2.0']
+        self.assertEqual(self.validator.validate_document(data), [])
 
     def test_reference_checks(self):
         cases = [

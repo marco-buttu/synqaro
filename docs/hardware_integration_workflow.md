@@ -42,9 +42,13 @@ change the expected result to match the code.
 
 This workflow is a repository instruction, not an implemented agent platform.
 The [versioned schema and authoring validator](../contracts/README.md) are available.
-Migration of the fictitious receiver remains later work in
+The [fictitious receiver contract](../contracts/models/fictitious_receiver.yaml),
+revision 0.2, is approved; implementation migration remains tracked in
 [issue #38](https://github.com/marco-buttu/synqaro/issues/38).
-Do not claim that current code, tests or GUI are already generated from one contract.
+See the [first application and verification record](fictitious_receiver_contract_application.md).
+The receiver-specific generator projects structured data; behavioral implementation
+and independent test oracles remain explicit. This is not a generic generator for
+other hardware models.
 
 At the start of an integration, read:
 
@@ -73,15 +77,31 @@ When sources disagree, record the conflict and obtain a decision rather than
 silently choosing whichever source matches the code.
 
 Record the documents and revisions actually consulted in the integration issue or
-draft. On resuming work, check whether they have changed. A future agent integration
-must implement and test loading these instructions at workflow entry; `AGENTS.md`
-and this reading record alone do not enforce that behavior.
+draft. On resuming work, check whether they have changed and revisit affected
+decisions. A future agent integration must load the required instructions, guidance,
+applicable schema and specifications before interviewing the team or proposing a
+contract. If mandatory sources are missing, unreadable or conflicting, report the
+problem and block the affected work until it is resolved. Do not substitute memory
+for the current sources. `AGENTS.md` and a reading record alone do not enforce this
+behavior.
 
 ## Interview the team
 
 Start with the operational purpose: what the hardware must accomplish, what can be
 measured or controlled, and whether the hardware and firmware already exist. Extract
 known answers from the supplied material before asking questions.
+
+Determine the required protocol independently of firmware release versions. If
+firmware does not yet exist or compatibility has not been verified, leave the
+contract's firmware version list empty rather than inventing a release or assuming
+unrestricted compatibility. When compatible firmware already exists, prefer reuse
+where identity, requirements and conformance evidence justify it. If the team
+rejects reuse, ask for the reasons and assess whether they justify a replacement
+(e.g. unmet requirements, reliability, licensing or maintainability); do not assume
+that a new implementation is necessary. Record the decision and evidence. Add
+verified compatible releases later through a reviewed contract revision. Contract
+approval does not itself certify a firmware build or authorize production writes
+to unverified hardware.
 
 Use the following topics as a completeness checklist, not a questionnaire to send
 all at once. Ask one focused question at a time, explain why it matters when needed,
@@ -320,12 +340,21 @@ approval from silence or from passing tests.
 
 Approval authorizes implementation against that scope. Unresolved requirements
 affecting it block implementation; unrelated, explicitly excluded capabilities may
-remain deferred. Hardware-team approval and maintainer approval of framework or
-shared-protocol changes are separate decisions, even when the same person holds
-both roles. Do not adapt production implementation, behavioral tests or GUI to a
-new contract before the applicable approvals. Separately authorized
-[exploratory probes and scripts](#explore-and-verify-existing-hardware) may precede
-contract approval to gather evidence; their results are not themselves approval.
+remain deferred. Hardware-team approval covers the exact contract revision and scope;
+maintainer approval covers the separate framework or shared-protocol proposal. Neither
+substitutes for the other, even when the same person holds both roles. Do not adapt
+production implementation, behavioral tests or GUI before the applicable approvals.
+Separately authorized [exploratory probes and scripts](#explore-and-verify-existing-hardware)
+may precede contract approval to gather evidence; their results are not themselves
+approval.
+
+The future agent integration must enforce these gates at its action boundaries:
+check the approver's authority, revision, scope and evidence; reject missing, stale
+or out-of-scope approvals; and keep independent authorized work possible. Tests must
+exercise actual context loading and attempted approval bypasses, including resumed
+sessions and separately authorized exploratory work. Implementation and testing are
+follow-up work from [issue #38, section 6](https://github.com/marco-buttu/synqaro/issues/38#6-specify-requirements-for-future-agent-integration),
+not capabilities provided by this workflow or the schema validator.
 
 ## Implement and manage changes
 
@@ -344,7 +373,10 @@ tests and reference documentation consistent in the delivered change.
 Record verification results and limitations. Simulator conformance does not prove
 physical-hardware behavior; identify the checks still needed on real equipment.
 
-For the current fictitious receiver, the approved behavioral specification remains
-in [Hardware Protocol](hardware_protocol.md). The structured-contract migration and
-GUI/test adaptation are later steps of issue #38 and require the agreed contract
-review; this workflow does not approve a replacement contract.
+For the current fictitious receiver, the [approved contract](../contracts/models/fictitious_receiver.yaml)
+revision 0.2 is the receiver-specific behavioral reference, together with the shared
+rules in [Hardware Protocol](hardware_protocol.md). Its approval is recorded in
+[the review](fictitious_receiver_contract_review.md#formal-approval). Implementation and GUI/test adaptation are tracked in section 5 of issue #38;
+see the [application record](fictitious_receiver_contract_application.md) for
+actual verification results and remaining limitations. Approval does not establish
+implementation conformance.

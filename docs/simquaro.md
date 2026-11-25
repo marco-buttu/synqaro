@@ -26,14 +26,14 @@ python3 -m venv .venv
 
 If the host lacks venv/ensurepip, install its Python venv support through your
 normal environment provisioning. Build tooling may need an approved package
-download. Do not install into the system interpreter. For development, use
-`.venv/bin/python -m pip install -e '.[web]'` so source changes apply to the
-next command. A normal installation copies the package; after source edits,
-reinstall it into the same environment before restarting an instance.
-If that development environment contains the older distribution named `simquaro`,
-remove it with `.venv/bin/python -m pip uninstall simquaro` **before** installing
-the renamed `synqaro` distribution. The normal `install.sh` workflow needs no such
-step: each installation builds a fresh private environment.
+download. Do not install into the system interpreter. The usual user installation
+is `bash install.sh`, which builds a fresh private environment. For development,
+run `bash install.sh --dev` and execute the source with
+`PYTHONPATH=src .venv/bin/python -m simquaro` or
+`PYTHONPATH=src .venv/bin/python -m synqaro gui`. This installs dependencies
+only; source edits apply to the next command. An existing development environment
+is reused without uninstalling packages already present. A normal installation
+copies the package; after source edits, reinstall it before restarting an instance.
 
 Source execution needs no install or pip:
 
@@ -605,12 +605,14 @@ four clients, 8 KiB requests, 64 KiB responses, and a 2000 ms exchange deadline.
 
 ## Executable conformance scope
 
-Run the standalone suite from the repository root:
+Run the full suite or selected simulator tests from the repository root:
 
 ```sh
-PYTHONPATH=src python3 -m unittest discover -s tests -t . -v
-PYTHONPATH=src python3 -m unittest tests.simquaro.test_recovery tests.simquaro.test_conformance -v
-PYTHONPATH=src python3 -m unittest tests.simquaro.test_smoke -v
+bash install.sh --dev
+source .venv/bin/activate
+pytest
+pytest tests/simquaro/test_recovery.py tests/simquaro/test_conformance.py -v
+pytest tests/simquaro/test_smoke.py -v
 ```
 
 The real-clock smoke sets/reads frequency, completes an ordinary calibration
@@ -706,3 +708,20 @@ local run/boot diagnostics and Git history do not implement them. Scientific dat
 association, protection/interlocks, hard real-time behavior, and correctness
 against real hardware also remain outside this evidence. A green suite establishes
 behavior of this simulator and test client only.
+
+## Receiver contract application (issue #38)
+
+The [approved receiver contract](../contracts/models/fictitious_receiver.yaml)
+and shared protocol are normative. The [generated reference](fictitious_receiver_reference.md)
+lists structured definitions used by the simulator, managed client and browser.
+See the [application and verification record](fictitious_receiver_contract_application.md)
+for exact scope, traceability and current results rather than interpreting earlier
+verification logs as evidence for this revision.
+
+Managed GUI operations on physical targets are read-only in this application:
+revision 0.2 declares no verified firmware release. The descriptor and matching
+protocol are not conformance evidence. The separately authorized modifying check
+suite and manual diagnostic console remain distinct; use them only within an
+agreed exploratory scope. Direct library callers must choose the appropriate
+read-only/authorization policy because the wire descriptor does not identify
+simulator versus physical provenance.

@@ -101,7 +101,8 @@ class ReceiverTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.model.snapshot()["actual"]["frequency"], "6")
         self.assertFalse(self.model.snapshot()["actual"]["frequency_verified"])
         self.faults.clear("frequency_lock_failure")
-        self.assertEqual((await self.request("get", name="frequency")).verb, "error")
+        self.assertEqual((await self.request("get", name="frequency")).fields,
+                         {"code": "VALUE_UNAVAILABLE", "reason": "UNVERIFIED"})
 
     async def test_clock_faults_coexist_and_historical_utc_survives_recovery(self):
         before = await self.request("status")

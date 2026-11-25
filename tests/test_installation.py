@@ -8,6 +8,7 @@ Run the opt-in network test with SYNQARO_REAL_INSTALL_TEST=1 and
 python -m unittest tests.test_installation -v.
 """
 
+import json
 import os
 from pathlib import Path
 import pty
@@ -20,6 +21,7 @@ import time
 import unittest
 import urllib.error
 import urllib.request
+import zipfile
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -183,6 +185,84 @@ class Scripts(unittest.TestCase):
         marker.write_text('synqaro-install-v1\n' + str(self.prefix) + '\n' +
                           str(self.launcher) + '\n' + str(self.config.parent) + '\n')
         return marker
+
+    def development_checkout(self):
+        source = self.home / 'development checkout'
+        (source / 'src/synqaro').mkdir(parents=True)
+        (source / 'src/simquaro').mkdir()
+        for name in ('install.sh', 'pyproject.toml'):
+            shutil.copy(REPO / name, source)
+        return source
+
+    def test_dev_rejects_prefix_without_writes(self):
+        source = self.development_checkout()
+        result = self.run_script('install.sh', '--dev', '--prefix', self.prefix,
+                                 source=source)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((source / '.venv').exists())
+        self.assertFalse(self.prefix.exists())
+
+    def test_dev_preserves_unrelated_venv_directory(self):
+        source = self.development_checkout()
+        environment = source / '.venv'
+        environment.mkdir()
+        precious = environment / 'user-data.txt'
+        precious.write_text('keep me')
+        result = self.run_script('install.sh', '--dev', '--python', PYTHON,
+                                 source=source)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(precious.read_text(), 'keep me')
+        self.assertFalse(self.prefix.exists())
+
+    def test_dev_installs_only_dependencies_offline(self):
+        probe = subprocess.run([str(PYTHON), '-I', '-c', 'import venv, ensurepip'],
+                               capture_output=True)
+        if probe.returncode:
+            self.skipTest('An interpreter with venv/ensurepip is needed')
+        source = self.development_checkout()
+        marker = self.fixture_installation()
+        original = marker.read_bytes()
+        wheels = self.home / 'test wheels'
+        wheels.mkdir()
+        # Metadata-only wheels exercise real pip without network downloads.
+        # Explicit expectations catch accidental changes to the dependency groups.
+        expected = {'fastapi': '0.115.0', 'uvicorn': '0.30.0', 'httpx': '0.27.0',
+                    'playwright': '1.48.0', 'PyYAML': '6.0.0', 'jsonschema': '4.18.0',
+                    'pytest': '8.3.0'}
+        for name, version in expected.items():
+            stem = f'{name}-{version}'
+            info = f'{stem}.dist-info'
+            with zipfile.ZipFile(wheels / f'{stem}-py3-none-any.whl', 'w') as wheel:
+                wheel.writestr(f'{info}/METADATA',
+                               f'Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n')
+                wheel.writestr(f'{info}/WHEEL',
+                               'Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n')
+                wheel.writestr(f'{info}/RECORD', '\n'.join(
+                    f'{info}/{item},,' for item in ('METADATA', 'WHEEL', 'RECORD')) + '\n')
+        escaped = self.home / 'external pip target'
+        env = {**self.env, 'PIP_NO_INDEX': '1', 'PIP_FIND_LINKS': wheels.as_uri(),
+               'PIP_TARGET': str(escaped)}
+        for _ in range(2):
+            result = self.run_script('install.sh', '--dev', '--python', PYTHON,
+                                     source=source, env=env)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        python = source / '.venv/bin/python'
+        result = subprocess.run([str(python), '-I', '-c',
+                                 'import importlib.metadata as m, json; '
+                                 'print(json.dumps({d.metadata["Name"].lower(): d.version '
+                                 'for d in m.distributions()}))'],
+                                capture_output=True, text=True, check=True)
+        installed = json.loads(result.stdout)
+        for name, version in expected.items():
+            self.assertEqual(installed[name.lower()], version)
+        self.assertNotIn('synqaro', installed)
+        self.assertNotIn('simquaro', installed)
+        self.assertFalse((python.parent / 'synqaro').exists())
+        self.assertFalse((python.parent / 'simquaro').exists())
+        self.assertFalse(escaped.exists())
+        self.assertEqual(marker.read_bytes(), original)
+        self.assertFalse(self.launcher.exists())
+        self.assertFalse(self.gui_launcher.exists())
 
     def test_purge_refuses_changed_ancestor_symlink(self):
         self.fixture_installation()

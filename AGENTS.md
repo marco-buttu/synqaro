@@ -18,3 +18,12 @@ Distinguish the team's operational needs from its proposed solutions. Preserve
 Synqaro's simplicity and maintainability. Hardware-contract approval does not
 authorize changes to the framework or shared protocol: those require a separate
 proposal and maintainer approval as described in the workflow.
+
+## Development tests
+
+From the repository root, run `bash install.sh --dev` to prepare the local
+`.venv` without installing the application. Use `.venv/bin/pytest` for the full
+suite or pass test paths to select a subset. The full suite includes real-browser
+tests, which require installed Google Chrome; report any unavailable prerequisites
+and do not treat skipped or unrun tests as successful verification. Existing
+unittest test cases remain supported by pytest.

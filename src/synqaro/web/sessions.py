@@ -47,6 +47,7 @@ class _Session:
     deadline: float
     persistent: bool = False
     exclusive: bool = False
+    read_only: bool = False
     state: str = "connecting"
     client: object = None
     connection: object = None
@@ -134,7 +135,8 @@ class SessionManager:
             raise ServiceError("SESSION_LIMIT", "Close an unused connection before connecting again")
         session = _Session(secrets.token_urlsafe(24), target, mode, entry.config,
                            snapshot.revision, snapshot.source, self.clock.monotonic() + 120,
-                           persistent=persistent, exclusive=exclusive)
+                           persistent=persistent, exclusive=exclusive,
+                           read_only=entry.kind == "hardware" and mode == "managed")
         self._sessions[session.id] = session  # Reserve before any connection await.
         if self._sweeper is None: self._sweeper = asyncio.create_task(self._sweep())
         try:
@@ -152,7 +154,11 @@ class SessionManager:
         if session.mode == "managed":
             definition = get_model(config.model)
             if definition.client_factory is None: raise ValueError("Model has no managed client profile")
-            session.client = definition.client_factory(config.host, config.port, config.settings)
+            # The prototype has no verified physical firmware/build admission record.
+            # Descriptor compatibility is not production write authorization. Explicit
+            # exploratory checks use their own connection and agreed permission.
+            session.client = definition.client_factory(config.host, config.port, config.settings,
+                                                       read_only=session.read_only)
             session.client.clock = self.clock
             def observe(e):
                 self._event(session, e.kind, data=render_bytes(e.wire), message=e.message,

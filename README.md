@@ -36,6 +36,21 @@ Existing firmware does not have to adopt Synqaro’s [proposed communication pro
    bash install.sh
    ```
 
+### Development dependencies
+
+From the repository root:
+
+```sh
+bash install.sh --dev
+source .venv/bin/activate
+pytest
+```
+
+`--dev` installs development and test dependencies in the checkout's `.venv`,
+without installing the application or changing the user-local installation.
+See [developer verification](docs/getting_started.md#scope-and-developer-verification)
+for test selection, browser prerequisites and contract checks.
+
 ### Remove
 
 Open a terminal in the same extracted folder and run:
@@ -75,5 +90,6 @@ Start with the first two steps of the development workflow:
 
 - [Hardware integration workflow](docs/hardware_integration_workflow.md)
 - [Contract format and validation](contracts/README.md)
+- [Fictitious receiver contract application and verification](docs/fictitious_receiver_contract_application.md)
 - [Developer verification](docs/getting_started.md#scope-and-developer-verification)
 - [Simquaro operator guide](docs/simquaro.md)

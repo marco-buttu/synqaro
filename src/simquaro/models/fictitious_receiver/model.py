@@ -5,7 +5,6 @@ delivery and the response_ready hook belong to the caller after handle returns.
 """
 
 import asyncio
-from dataclasses import fields
 from decimal import Context, Decimal, localcontext
 import logging
 import re
@@ -16,13 +15,16 @@ from synqaro_protocol.errors import ProtocolError
 from simquaro.faults import FaultContext, FaultController
 from simquaro.model import ModelReply
 from synqaro_protocol.codec import MAX_REQUEST_ID, NumericToken, Request, Response, encode_response
-from .config import ReceiverConfig
+from synqaro_protocol.profiles._receiver_contract_data import DATA
 from synqaro_protocol.profiles.fictitious_receiver import render_error
+from .config import ReceiverConfig
 from .faults import receiver_faults
 from .procedures import Procedures
 from .validation import parse_frequency
 
 
+_DESCRIPTOR = DATA["descriptor"]
+_DWELL = DATA["procedures"]["scan"]["parameters"]["dwell_ms"]["value"]
 _LOGGER = logging.getLogger(__name__)
 _DIAGNOSTIC_CAUSES = (("synthesizer_failure", "SYNTHESIZER_FAILURE"),
                       ("frequency_read_failure", "FREQUENCY_READ_FAILED"),
@@ -144,15 +146,15 @@ class FictitiousReceiverSimulator:
         name = self._required(request, "name")
         if not isinstance(name, str):
             raise ProtocolError("INVALID_TYPE", {"parameter": "name", "expected": "string"})
-        supported = ("calibrate", "scan") if procedure else ("configuration", "frequency")
+        supported = DATA["procedures"] if procedure else DATA["properties"]
         if name not in supported:
             context = {"name": name} if procedure else {"parameter": "name", "value": name}
             raise ProtocolError("UNKNOWN_PROCEDURE" if procedure else "UNKNOWN_PROPERTY", context)
         return name
 
     def _unit(self, request):
-        if self._required(request, "unit") != "GHz":
-            raise ProtocolError("UNSUPPORTED_UNIT", {"parameter": "unit", "expected": "GHz"})
+        if self._required(request, "unit") != self.config.frequency_unit:
+            raise ProtocolError("UNSUPPORTED_UNIT", {"parameter": "unit", "expected": self.config.frequency_unit})
 
     def _frequency_parameter(self, request, parameter):
         try:
@@ -169,34 +171,31 @@ class FictitiousReceiverSimulator:
         if not isinstance(dwell, NumericToken) or re.fullmatch(r"[0-9]+", dwell.text) is None:
             raise ProtocolError("INVALID_TYPE", {"parameter": "dwell_ms", "expected": "integer"})
         digits = dwell.text.lstrip("0")
-        if not digits or len(digits) > 4 or int(digits) > 1000:
-            raise ProtocolError("OUT_OF_RANGE", {"parameter": "dwell_ms", "min": _number(1), "max": _number(1000)})
+        if (not digits or len(digits) > len(str(_DWELL["maximum"]))
+                or not _DWELL["minimum"] <= int(digits) <= _DWELL["maximum"]):
+            raise ProtocolError("OUT_OF_RANGE", {"parameter": "dwell_ms", "min": _number(_DWELL["minimum"]), "max": _number(_DWELL["maximum"])})
         dwell_ms = int(digits)
-        if 10 * (self.config.max_tuning_ms + dwell_ms) > self.config.scan_timeout_ms:
+        if self.config.scan_points * (self.config.max_tuning_ms + dwell_ms) > self.config.scan_timeout_ms:
             raise ProtocolError("INVALID_PARAMETER", {"parameter": "dwell_ms", "reason": "EXECUTION_BUDGET_EXCEEDED"})
         # Integer nearest rounding with ties toward the higher (positive) grid index.
         with localcontext(Context(prec=32)):
-            a, b = int(start * 1000000), int(stop * 1000000)
-            indices = [(2 * (9 * a + i * (b - a)) + 9) // 18 for i in range(10)]
-        if abs(b - a) < 9 or len(set(indices)) != 10:
+            resolution = Decimal(str(self.config.frequency_resolution))
+            a, b = int(start / resolution), int(stop / resolution)
+            intervals = self.config.scan_points - 1
+            indices = [(2 * (intervals * a + i * (b - a)) + intervals) // (2 * intervals)
+                       for i in range(self.config.scan_points)]
+        if abs(b - a) < intervals or len(set(indices)) != self.config.scan_points:
             raise ProtocolError("INVALID_PARAMETER", {"parameter": "stop", "reason": "INSUFFICIENT_DISTINCT_POINTS"})
         with localcontext(Context(prec=32)):
-            return tuple(Decimal(index) / Decimal(1000000) for index in indices), dwell_ms
+            return tuple(Decimal(index) * resolution for index in indices), dwell_ms
 
     def _descriptor(self):
-        names = {"protocol_version", "hardware_id", "hardware_model", "firmware_version", "firmware_build",
-                 "frequency_min", "frequency_max", "frequency_unit", "frequency_resolution", "frequency_rounding",
-                 "max_message_bytes", "incomplete_message_timeout_ms", "max_pending_requests", "max_tuning_ms",
-                 "calibrate_timeout_ms", "scan_timeout_ms", "procedure_stop_timeout_ms", "scan_points",
-                 "scan_max_dwell_ms", "utc_clock_supported"}
-        result = {"name": "configuration"}
-        for field in fields(self.config):
-            if field.name in names:
-                value = getattr(self.config, field.name)
-                result[field.name] = _number(value) if type(value) in (int, float) else value
-        result.update(readonly_properties=["configuration"], readwrite_properties=["frequency"],
-                      supported_procedures=["calibrate", "scan"], calibrate_cancellation="except_finalization",
-                      scan_cancellation="always", sampled_at_properties=["frequency"])
+        result = {name: (_number(value) if type(value) in (int, float) else
+                         list(value) if isinstance(value, list) else value)
+                  for name, value in _DESCRIPTOR.items()}
+        result.update(hardware_id=self.config.hardware_id,
+                      firmware_version=self.config.firmware_version,
+                      firmware_build=self.config.firmware_build)
         return result
 
     def _general(self):
@@ -224,7 +223,7 @@ class FictitiousReceiverSimulator:
             raise ProtocolError("FREQUENCY_READ_FAILED", {})
         if not self._frequency_verified:
             raise ProtocolError("VALUE_UNAVAILABLE", {"reason": "UNVERIFIED"})
-        result = {"name": "frequency", "value": _number(self._frequency), "unit": "GHz"}
+        result = {"name": "frequency", "value": _number(self._frequency), "unit": self.config.frequency_unit}
         timestamp = self.utc_timestamp()
         if timestamp is not None:
             result["sampled_at"] = timestamp
@@ -254,6 +253,10 @@ class FictitiousReceiverSimulator:
             _LOGGER.info("frequency verified boot=%s monotonic=%s value=%s", self.boot_id,
                          self.clock.monotonic(), target)
         finally:
+            # An unsuccessful or interrupted application loses calibration evidence,
+            # even when the requested effective frequency did not change.
+            if not self._frequency_verified:
+                self._calibrated = False
             self._tuning = False
 
     async def _external_set(self, request, target, session_id):
@@ -261,7 +264,7 @@ class FictitiousReceiverSimulator:
             await self._tune(target)
             effects = self._emit("frequency_set_verified", request, session_id)
             return ModelReply(Response("ok", request.request_id,
-                                      {"name": "frequency", "value": _number(self._frequency), "unit": "GHz"}), effects,
+                                      {"name": "frequency", "value": _number(self._frequency), "unit": self.config.frequency_unit}), effects,
                               delivery_events=("frequency_set_verified",))
         except ProtocolError as error:
             return self._error(request, error)
@@ -292,7 +295,7 @@ class FictitiousReceiverSimulator:
             elif verb == "set":
                 self._allowed(request, {"name", "value", "unit"})
                 name = self._name(request)
-                if name == "configuration":
+                if DATA["properties"][name]["access"] == "readonly":
                     raise ProtocolError("READ_ONLY_PROPERTY", {"name": name})
                 target = self._frequency_parameter(request, "value")
                 self._unit(request)
@@ -304,7 +307,7 @@ class FictitiousReceiverSimulator:
                 return await asyncio.shield(self._spawn(self._external_set(request, target, session_id)))
             elif verb == "run":
                 name = self._name(request, procedure=True)
-                self._allowed(request, {"name", "start", "stop", "unit", "dwell_ms"} if name == "scan" else {"name"})
+                self._allowed(request, {"name", *DATA["procedures"][name]["parameters"]})
                 targets, dwell = self._scan_parameters(request) if name == "scan" else ((), 0)
                 if self._busy():
                     raise ProtocolError("BUSY", {})
@@ -346,7 +349,7 @@ class FictitiousReceiverSimulator:
                            "reboot_pending": self._reboot_pending},
                 "reported": {"general": _json_fields(self._general()),
                              "procedures": {name: _json_fields(self._procedures.status(name))
-                                            for name in ("calibrate", "scan")}},
+                                            for name in DATA["procedures"]}},
                 "incidents": [dict(entry) for entry in self._incidents]}
 
     async def close(self):
