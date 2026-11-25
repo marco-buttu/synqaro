@@ -77,9 +77,13 @@ When sources disagree, record the conflict and obtain a decision rather than
 silently choosing whichever source matches the code.
 
 Record the documents and revisions actually consulted in the integration issue or
-draft. On resuming work, check whether they have changed. A future agent integration
-must implement and test loading these instructions at workflow entry; `AGENTS.md`
-and this reading record alone do not enforce that behavior.
+draft. On resuming work, check whether they have changed and revisit affected
+decisions. A future agent integration must load the required instructions, guidance,
+applicable schema and specifications before interviewing the team or proposing a
+contract. If mandatory sources are missing, unreadable or conflicting, report the
+problem and block the affected work until it is resolved. Do not substitute memory
+for the current sources. `AGENTS.md` and a reading record alone do not enforce this
+behavior.
 
 ## Interview the team
 
@@ -336,12 +340,21 @@ approval from silence or from passing tests.
 
 Approval authorizes implementation against that scope. Unresolved requirements
 affecting it block implementation; unrelated, explicitly excluded capabilities may
-remain deferred. Hardware-team approval and maintainer approval of framework or
-shared-protocol changes are separate decisions, even when the same person holds
-both roles. Do not adapt production implementation, behavioral tests or GUI to a
-new contract before the applicable approvals. Separately authorized
-[exploratory probes and scripts](#explore-and-verify-existing-hardware) may precede
-contract approval to gather evidence; their results are not themselves approval.
+remain deferred. Hardware-team approval covers the exact contract revision and scope;
+maintainer approval covers the separate framework or shared-protocol proposal. Neither
+substitutes for the other, even when the same person holds both roles. Do not adapt
+production implementation, behavioral tests or GUI before the applicable approvals.
+Separately authorized [exploratory probes and scripts](#explore-and-verify-existing-hardware)
+may precede contract approval to gather evidence; their results are not themselves
+approval.
+
+The future agent integration must enforce these gates at its action boundaries:
+check the approver's authority, revision, scope and evidence; reject missing, stale
+or out-of-scope approvals; and keep independent authorized work possible. Tests must
+exercise actual context loading and attempted approval bypasses, including resumed
+sessions and separately authorized exploratory work. Implementation and testing are
+follow-up work from [issue #38, section 6](https://github.com/marco-buttu/synqaro/issues/38#6-specify-requirements-for-future-agent-integration),
+not capabilities provided by this workflow or the schema validator.
 
 ## Implement and manage changes
 
