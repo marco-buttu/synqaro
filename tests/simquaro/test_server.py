@@ -154,6 +154,31 @@ class ServerTests(RawSessionCase):
         await turns()
         self.assertEqual(self.model.snapshot()["reported"]["procedures"]["calibrate"]["state"], "running")
 
+    async def test_shared_clients_reject_overlap_and_cancel_after_disconnect(self):
+        a, aw = await self.connect()
+        b, bw = await self.connect()
+        aw.write(b"#set <id=1>: name=frequency, value=6, unit=GHz\n")
+        await turns()
+        bw.write(b"#set <id=1>: name=frequency, value=7, unit=GHz\n")
+        self.assertIn(b"code=BUSY", await self.line(b))
+        await self.tick(.1)
+        self.assertIn(b"value=6", await self.line(a))
+        bw.write(b"#set <id=2>: name=frequency, value=7, unit=GHz\n")
+        await self.tick(.1)
+        self.assertIn(b"value=7", await self.line(b))
+        aw.write(b"#run <id=2>: name=scan, start=5, stop=6, unit=GHz, dwell_ms=1000\n")
+        self.assertIn(b"#accepted <id=2>", await self.line(a))
+        aw.close()
+        await aw.wait_closed()
+        bw.write(b"#status <id=3>: name=scan\n")
+        self.assertIn(b"state=running", await self.line(b))
+        bw.write(b"#cancel <id=4>: name=scan\n")
+        self.assertIn(b"#accepted <id=4>", await self.line(b))
+        await self.tick(.1)
+        await self.tick(.1)
+        bw.write(b"#status <id=5>: name=scan\n")
+        self.assertIn(b"state=cancelled", await self.line(b))
+
     async def test_seventeenth_connection_refused_before_admission(self):
         for _ in range(16):
             await self.connect()

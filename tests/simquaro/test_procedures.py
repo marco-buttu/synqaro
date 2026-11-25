@@ -68,6 +68,32 @@ class ProcedureTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await self.request("status")).fields["calibrated"], calibrated)
         self.assertEqual((await self.named())["state"], "succeeded")
 
+    async def test_same_frequency_failure_invalidates_calibration_until_recalibrated(self):
+        # Contract 0.2: uncertain_calibration / same_frequency_failed.
+        # The oracle is deliberately literal, not derived from the generator.
+        self.assertEqual((await self.request("run", name="calibrate")).verb, "accepted")
+        await self.complete_calibration()
+        self.assertTrue((await self.request("status")).fields["calibrated"])
+        invalid = await self.request("set", name="frequency", value=N("10.0000001"), unit="GHz")
+        self.assertEqual(invalid.fields["code"], "OUT_OF_RANGE")
+        self.assertTrue((await self.request("status")).fields["calibrated"])
+        self.faults.activate("frequency_lock_failure")
+        task = asyncio.create_task(self.request("set", name="frequency", value=N("5"), unit="GHz"))
+        await self.tick(1)
+        self.assertEqual((await task).fields["code"], "FREQUENCY_LOCK_FAILED")
+        self.assertFalse((await self.request("status")).fields["calibrated"])
+        self.faults.clear("frequency_lock_failure")
+        reading = await self.request("get", name="frequency")
+        self.assertEqual(reading.fields, {"code": "VALUE_UNAVAILABLE", "reason": "UNVERIFIED"})
+        task = asyncio.create_task(self.request("set", name="frequency", value=N("5"), unit="GHz"))
+        await self.tick(.1)
+        self.assertEqual((await task).verb, "ok")
+        self.assertEqual(str((await self.request("get", name="frequency")).fields["value"]), "5")
+        self.assertFalse((await self.request("status")).fields["calibrated"])
+        self.assertEqual((await self.request("run", name="calibrate")).verb, "accepted")
+        await self.complete_calibration()
+        self.assertTrue((await self.request("status")).fields["calibrated"])
+
     async def test_reference_phase_hook_occurs_once_after_acceptance_not_polling(self):
         self.faults.schedule("calibration_reference_unavailable", when="calibrate_reference_measurement", times=2)
         await self.request("run", name="calibrate")

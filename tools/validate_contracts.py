@@ -10,7 +10,7 @@ try:
     import yaml
     from jsonschema import Draft202012Validator, FormatChecker
 except ImportError:
-    raise SystemExit('Install contract tools with: python -m pip install -e ".[contracts]"')
+    raise SystemExit('Install contract tools with: bash install.sh --dev')
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = json.loads((ROOT / 'contracts/schema-v1.json').read_text())

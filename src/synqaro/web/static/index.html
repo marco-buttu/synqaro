@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Synqaro — Hardware Console</title>
   <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/receiver-contract.js" defer></script>
   <script src="/static/app.js" defer></script>
 </head>
 <body>
@@ -36,16 +37,13 @@
         <p id="operations-state" class="status" aria-live="polite">disconnected — connects automatically on your next operation</p>
         <div class="buttons"><button id="operations-disconnect">Disconnect operations</button><button id="operations-reconnect">Reconnect operations</button></div>
         <div id="receiver-controls">
-          <label for="frequency">Frequency (GHz)<input id="frequency" type="text" inputmode="decimal" value="5.1234565" maxlength="64"></label>
-          <div class="buttons"><button id="set-frequency">Set frequency</button><button id="get-frequency">Read frequency</button><button id="general-status">Read receiver status</button></div>
-          <div class="buttons"><button id="calibrate">Run calibrate</button><button id="reboot" class="warning">Reboot hardware</button></div>
-          <details><summary>Scan settings</summary><div class="fields">
-            <label for="scan-start">Scan start (GHz)<input id="scan-start" value="5" maxlength="64"></label>
-            <label for="scan-stop">Scan stop (GHz)<input id="scan-stop" value="5.2" maxlength="64"></label>
-            <label for="scan-dwell">Dwell per point (ms)<input id="scan-dwell" value="1000" maxlength="64"></label>
-          </div><p>Ten fixed points; no scientific-data association is guaranteed by this console.</p><button id="scan">Run scan</button></details>
-          <div><label for="procedure">Procedure</label><select id="procedure"><option value="calibrate">calibrate</option><option value="scan">scan</option></select></div>
-          <div class="buttons"><button id="procedure-status">Read procedure status</button><button id="cancel">Cancel procedure</button></div>
+          <p id="receiver-contract-revision" class="hint"></p>
+          <p id="physical-write-policy" class="hint" hidden>Guided operations are read-only: no verified physical firmware/build admission exists. Use explicitly authorized diagnostic checks for exploratory changes.</p>
+          <div id="contract-properties"></div>
+          <div class="buttons"><button id="general-status">Read receiver status</button><button id="reboot" class="warning" data-modifying="true">Reboot hardware</button></div>
+          <div id="contract-procedures"></div>
+          <div><label for="procedure">Procedure</label><select id="procedure"></select></div>
+          <div class="buttons"><button id="procedure-status">Read procedure status</button><button id="cancel" data-modifying="true">Cancel procedure</button></div>
           <label class="check"><input id="monitor" type="checkbox">Monitor procedure every 500 ms</label>
           <p class="hint">Monitoring sends real status requests and may consume scheduled faults. It is off by default.</p>
         </div>

@@ -3,6 +3,10 @@
 from dataclasses import dataclass
 from decimal import Context, Decimal, localcontext
 
+from synqaro_protocol.profiles._receiver_contract_data import DATA
+
+_DESCRIPTOR = DATA["descriptor"]
+
 
 def _identity(value: str, name: str) -> None:
     if (not isinstance(value, str) or not value or not value.isascii()
@@ -24,26 +28,26 @@ class ReceiverConfig:
     advertised deadlines; they never define completion or progress by themselves.
     """
 
-    protocol_version: int = 1
+    protocol_version: int = _DESCRIPTOR["protocol_version"]
     hardware_id: str = "example-receiver-01"
-    hardware_model: str = "fictitious_receiver"
+    hardware_model: str = _DESCRIPTOR["hardware_model"]
     firmware_version: str = "0.1.0"
     firmware_build: str = "example-build"
-    frequency_min: float = 1
-    frequency_max: float = 10
-    frequency_unit: str = "GHz"
-    frequency_resolution: float = 0.000001
-    frequency_rounding: str = "nearest_ties_up"
-    max_message_bytes: int = 4096
-    incomplete_message_timeout_ms: int = 2000
-    max_pending_requests: int = 4
-    max_tuning_ms: int = 1000
-    calibrate_timeout_ms: int = 30000
-    scan_timeout_ms: int = 20000
-    procedure_stop_timeout_ms: int = 5000
-    scan_points: int = 10
-    scan_max_dwell_ms: int = 1000
-    utc_clock_supported: bool = True
+    frequency_min: float = _DESCRIPTOR["frequency_min"]
+    frequency_max: float = _DESCRIPTOR["frequency_max"]
+    frequency_unit: str = _DESCRIPTOR["frequency_unit"]
+    frequency_resolution: float = _DESCRIPTOR["frequency_resolution"]
+    frequency_rounding: str = _DESCRIPTOR["frequency_rounding"]
+    max_message_bytes: int = _DESCRIPTOR["max_message_bytes"]
+    incomplete_message_timeout_ms: int = _DESCRIPTOR["incomplete_message_timeout_ms"]
+    max_pending_requests: int = _DESCRIPTOR["max_pending_requests"]
+    max_tuning_ms: int = _DESCRIPTOR["max_tuning_ms"]
+    calibrate_timeout_ms: int = _DESCRIPTOR["calibrate_timeout_ms"]
+    scan_timeout_ms: int = _DESCRIPTOR["scan_timeout_ms"]
+    procedure_stop_timeout_ms: int = _DESCRIPTOR["procedure_stop_timeout_ms"]
+    scan_points: int = _DESCRIPTOR["scan_points"]
+    scan_max_dwell_ms: int = _DESCRIPTOR["scan_max_dwell_ms"]
+    utc_clock_supported: bool = _DESCRIPTOR["utc_clock_supported"]
     initial_frequency: float = 5
     tuning_duration_ms: int = 100
     stop_duration_ms: int = 100
@@ -55,25 +59,8 @@ class ReceiverConfig:
         for name in ("hardware_id", "firmware_version", "firmware_build"):
             _identity(getattr(self, name), name)
 
-        fixed = {
-            "protocol_version": 1,
-            "hardware_model": "fictitious_receiver",
-            "frequency_min": 1,
-            "frequency_max": 10,
-            "frequency_unit": "GHz",
-            "frequency_resolution": 0.000001,
-            "frequency_rounding": "nearest_ties_up",
-            "max_message_bytes": 4096,
-            "incomplete_message_timeout_ms": 2000,
-            "max_pending_requests": 4,
-            "max_tuning_ms": 1000,
-            "calibrate_timeout_ms": 30000,
-            "scan_timeout_ms": 20000,
-            "procedure_stop_timeout_ms": 5000,
-            "scan_points": 10,
-            "scan_max_dwell_ms": 1000,
-            "utc_clock_supported": True,
-        }
+        fixed = {name: expected for name, expected in _DESCRIPTOR.items()
+                 if name in self.__dataclass_fields__}
         for name, expected in fixed.items():
             actual = getattr(self, name)
             if isinstance(expected, bool):
@@ -90,25 +77,25 @@ class ReceiverConfig:
         if type(self.initial_frequency) not in (int, float):
             raise ValueError("initial_frequency must be numeric; supply a frequency in GHz")
         initial = Decimal(str(self.initial_frequency))
-        if not initial.is_finite() or not Decimal("1") <= initial <= Decimal("10"):
-            raise ValueError("initial_frequency is out of range; choose 1 through 10 GHz")
+        if not initial.is_finite() or not Decimal(str(self.frequency_min)) <= initial <= Decimal(str(self.frequency_max)):
+            raise ValueError(f"initial_frequency is out of range; choose {self.frequency_min} through {self.frequency_max} {self.frequency_unit}")
         # In-range int/float decimal spellings fit exactly within 32 digits.
         # The caller's precision, exponent limits, and traps cannot change validation.
         with localcontext(Context(prec=32)):
-            off_grid = initial % Decimal("0.000001") != 0
+            off_grid = initial % Decimal(str(self.frequency_resolution)) != 0
         if off_grid:
-            raise ValueError("initial_frequency is off grid; choose an exact 0.000001 GHz step")
+            raise ValueError(f"initial_frequency is off grid; choose an exact {self.frequency_resolution:.6f} {self.frequency_unit} step")
 
         for name in ("tuning_duration_ms", "stop_duration_ms", "calibrate_preparation_ms",
                      "calibrate_measurement_ms", "calibrate_finalization_ms"):
             _positive_integer(getattr(self, name), name)
         if self.tuning_duration_ms > self.max_tuning_ms:
-            raise ValueError("tuning_duration_ms exceeds its deadline; use at most 1000 ms")
+            raise ValueError(f"tuning_duration_ms exceeds its deadline; use at most {self.max_tuning_ms} ms")
         if self.stop_duration_ms > self.procedure_stop_timeout_ms:
-            raise ValueError("stop_duration_ms exceeds its deadline; use at most 5000 ms")
+            raise ValueError(f"stop_duration_ms exceeds its deadline; use at most {self.procedure_stop_timeout_ms} ms")
         calibration_ms = (self.calibrate_preparation_ms + self.calibrate_measurement_ms
                           + self.calibrate_finalization_ms)
         if calibration_ms > self.calibrate_timeout_ms:
-            raise ValueError("calibration exceeds its deadline; reduce its phase durations to total at most 30000 ms")
+            raise ValueError(f"calibration exceeds its deadline; reduce its phase durations to total at most {self.calibrate_timeout_ms} ms")
         if self.calibrate_finalization_ms < self.tuning_duration_ms:
             raise ValueError("calibration cannot restore frequency; allow at least tuning_duration_ms for finalization")

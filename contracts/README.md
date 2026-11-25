@@ -8,7 +8,9 @@ agent gathers requirements and obtains approval; it remains required reading.
 The [fictitious receiver contract](models/fictitious_receiver.yaml), revision 0.2,
 is approved; see the [approval record](../docs/fictitious_receiver_contract_review.md#formal-approval).
 It references [Hardware Protocol](../docs/hardware_protocol.md) for shared rules.
-Implementation migration remains tracked in [issue #38](https://github.com/marco-buttu/synqaro/issues/38).
+The receiver-specific implementation and its verification status are recorded in
+[contract application](../docs/fictitious_receiver_contract_application.md), tracked in
+[issue #38](https://github.com/marco-buttu/synqaro/issues/38).
 The example below is not a supported hardware model or a replacement for that contract.
 
 ## Write a contract
@@ -118,9 +120,9 @@ From the repository root, install the optional authoring dependencies in the
 development virtual environment:
 
 ```sh
-.venv/bin/python -m pip install -e '.[contracts]'
+bash install.sh --dev
 .venv/bin/python tools/validate_contracts.py
-.venv/bin/python -m unittest tests.test_contracts -v
+.venv/bin/pytest tests/test_contracts.py -v
 ```
 
 If setting up a development checkout for the first time, follow
@@ -162,8 +164,9 @@ firmware implements the contract, an external reference exists, or a deadline is
 physically achievable. Scenario coverage means only that a reference exists.
 Resolution/rounding semantics and protocol-specific guarantees need conformance
 tests. Do not generate expected test results from firmware behavior or bypass the
-workflow's semantic review and approval. GUI generation and behavioral-test
-adaptation remain later work; this step does not implement either.
+workflow's semantic review and approval. The receiver implementation uses the
+approved contract for generated GUI definitions and applicable checks while
+retaining independent behavioral tests.
 
 Schema version 1 is the first format for this prototype, not a claim of universal
 hardware coverage. Preserve versioned schemas; incompatible format changes need a
@@ -171,3 +174,24 @@ new version and migration decision, not a silent edit of existing contracts.
 
 Implementation references: [JSON Schema validation library](https://python-jsonschema.readthedocs.io/en/stable/validate/)
 and [PyYAML safe-loading documentation](https://pyyaml.org/wiki/PyYAMLDocumentation).
+
+## Generate receiver definitions
+
+The approved YAML is the authoring source for the receiver-specific generator.
+After a reviewed contract change, run the validator and regenerate the Python
+profile data, browser data and [reference](../docs/fictitious_receiver_reference.md).
+Commit all three outputs alongside the approved source. Do not edit them by hand.
+
+```sh
+python tools/validate_contracts.py contracts/models/fictitious_receiver.yaml
+python tools/generate_receiver_contract.py
+python tools/generate_receiver_contract.py --check
+```
+
+Run from the repository root with the development environment active (`bash install.sh --dev`).
+The generator is deliberately model-specific; it rejects unsupported operation
+shapes instead of silently inventing behavior. Runtime packages require neither
+YAML nor jsonschema. The stale-artifact check is also exercised by the contract
+tests. The [application record](../docs/fictitious_receiver_contract_application.md)
+explains the distinction between generated definitions and independent behavioral
+tests.

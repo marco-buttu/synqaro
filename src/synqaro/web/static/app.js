@@ -55,6 +55,115 @@ async function action(operation) {
 function button(id, operation) { $(id).addEventListener("click", () => action(operation)); }
 function path() { return "/targets/" + encodeURIComponent(current.name); }
 function number(id) { return {number:$(id).value.trim()}; }
+// UI defaults are examples, not startup values or firmware requirements.
+const receiverExamples = {frequency:"5.1234565", "scan-start":"5", "scan-stop":"5.2", "scan-dwell_ms":"1000"};
+
+function decimalParts(text) {
+  const match = /^([+-]?)([0-9]+)(?:\.([0-9]+))?(?:[eE]([+-]?[0-9]+))?$/.exec(text);
+  if (!match || text.length > 64) throw new Error("Enter a bounded decimal number.");
+  const fraction = match[3] || "";
+  const coefficient = BigInt((match[1] === "-" ? "-" : "") + match[2] + fraction);
+  const exponent = Number(match[4] || "0") - fraction.length;
+  // All receiver bounds are positive and small. With at most 64 input characters,
+  // exponents outside this interval cannot be in range. Never allocate giant powers.
+  if (!Number.isSafeInteger(exponent) || Math.abs(exponent) > 128)
+    throw new Error("Decimal exponent is outside the supported input range.");
+  return {coefficient, exponent};
+}
+function alignDecimal(left, right) {
+  const exponent = Math.min(left.exponent, right.exponent);
+  return [left.coefficient * 10n ** BigInt(left.exponent - exponent),
+          right.coefficient * 10n ** BigInt(right.exponent - exponent)];
+}
+function compareDecimal(left, right) {
+  const [a, b] = alignDecimal(left, right);
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+function gridIndex(value, resolution) {
+  const [a, b] = alignDecimal(value, decimalParts(String(resolution)));
+  return (2n * a + b) / (2n * b); // Positive receiver frequencies, ties upward.
+}
+function validatedValue(id, definition) {
+  const spelling = $(id).value.trim();
+  if (definition.type === "integer" && !/^[0-9]+$/.test(spelling))
+    throw new Error(`${id}: enter decimal integer digits.`);
+  const value = decimalParts(spelling);
+  if (compareDecimal(value, decimalParts(String(definition.minimum))) < 0 ||
+      compareDecimal(value, decimalParts(String(definition.maximum))) > 0)
+    throw new Error(`${id}: enter ${definition.minimum} through ${definition.maximum} ${definition.unit || ""}.`);
+  // Preserve original numeric spelling. Firmware owns rounding and actual validation.
+  return {number:spelling};
+}
+function operationInput(parent, id, name, definition) {
+  const label = document.createElement("label"), input = document.createElement("input");
+  label.htmlFor = id; label.textContent = `${name}${definition.unit ? ` (${definition.unit})` : ""}`;
+  input.id = id; input.type = "text"; input.inputMode = definition.type === "integer" ? "numeric" : "decimal";
+  input.maxLength = 64; input.value = receiverExamples[id === "scan-dwell" ? "scan-dwell_ms" : id] || String(definition.minimum);
+  input.title = `${definition.description} Range: ${definition.minimum}–${definition.maximum}.`;
+  label.append(input); parent.append(label);
+}
+function operationButton(parent, id, label, handler) {
+  const control = document.createElement("button");
+  control.id = id; control.type = "button"; control.textContent = label;
+  if (id.startsWith("set-") || Object.hasOwn(RECEIVER_SPEC.procedures, id)) control.dataset.modifying = "true";
+  parent.append(control); button(id, handler);
+}
+function operationGroup(parent) {
+  const group = document.createElement("div"); group.className = "buttons"; parent.append(group); return group;
+}
+function buildReceiverControls() {
+  text("receiver-contract-revision", `Approved receiver contract ${RECEIVER_SPEC.revision} · protocol v${RECEIVER_SPEC.descriptor.protocol_version}`);
+  const properties = $("contract-properties");
+  for (const [name, property] of Object.entries(RECEIVER_SPEC.properties)) {
+    const value = property.value;
+    if (property.access === "readwrite") operationInput(properties, name, name[0].toUpperCase() + name.slice(1), value);
+    const group = operationGroup(properties);
+    if (property.access === "readwrite") operationButton(group, `set-${name}`, `Set ${name}`, () =>
+      request("set", {name, value:validatedValue(name, value), ...(value.unit ? {unit:value.unit} : {})}));
+    operationButton(group, `get-${name}`, `Read ${name}`, () => request("get", {name}));
+  }
+  const procedures = $("contract-procedures");
+  for (const [name, procedure] of Object.entries(RECEIVER_SPEC.procedures)) {
+    let parent = procedures;
+    const entries = Object.entries(procedure.parameters);
+    const ids = {};
+    if (entries.length) {
+      parent = document.createElement("details"); const summary = document.createElement("summary");
+      summary.textContent = `${name[0].toUpperCase() + name.slice(1)} settings`;
+      parent.append(summary); procedures.append(parent);
+      const fields = document.createElement("div"); fields.className = "fields"; parent.append(fields);
+      for (const [parameter, entry] of entries) {
+        if (entry.value.enum?.length === 1) continue; // Fixed wire values are supplied directly.
+        const id = `${name}-${parameter === "dwell_ms" ? "dwell" : parameter}`;
+        ids[parameter] = id;
+        const label = parameter === "dwell_ms" ? "Dwell per point" : `${name[0].toUpperCase() + name.slice(1)} ${parameter}`;
+        operationInput(fields, id, label, entry.value);
+      }
+      if (name === "scan") {
+        const hint = document.createElement("p");
+        hint.textContent = `${RECEIVER_SPEC.descriptor.scan_points} fixed points; no scientific-data association is guaranteed by this console.`;
+        parent.append(hint);
+      }
+    }
+    operationButton(operationGroup(parent), name, `Run ${name}`, () => {
+      const fields = {name};
+      for (const [parameter, entry] of entries) fields[parameter] = entry.value.enum?.length === 1 ?
+        entry.value.enum[0] : validatedValue(ids[parameter], entry.value);
+      if (name === "scan") {
+        const descriptor = RECEIVER_SPEC.descriptor;
+        const first = gridIndex(decimalParts(fields.start.number), procedure.parameters.start.value.resolution);
+        const last = gridIndex(decimalParts(fields.stop.number), procedure.parameters.stop.value.resolution);
+        const span = first > last ? first - last : last - first;
+        if (span < BigInt(descriptor.scan_points - 1)) throw new Error("Scan endpoints must yield distinct rounded points.");
+        if (descriptor.scan_points * (descriptor.max_tuning_ms + Number(fields.dwell_ms.number)) > procedure.timing.deadline_ms)
+          throw new Error("Scan exceeds its conservative execution budget.");
+      }
+      $("procedure").value = name;
+      return request("run", fields);
+    });
+  }
+  selectOptions($("procedure"), Object.keys(RECEIVER_SPEC.procedures).map(name => [name, name]));
+}
 function selectOptions(element, items) {
   element.replaceChildren();
   for (const [value, label] of items) {
@@ -91,7 +200,7 @@ async function showTarget() {
   jobId = null; $("monitor").checked = false;
   $("fault-controls").hidden = current.kind !== "simulator";
   $("apply-config").hidden = current.kind !== "simulator";
-  $("receiver-controls").hidden = current.model !== "fictitious_receiver";
+  $("receiver-controls").hidden = current.model !== RECEIVER_SPEC.model;
   selectOptions($("fault"), []); faultCatalog = [];
   text("fault-state", "Not inspected. Refresh explicitly.");
   text("job-state", "No job submitted in this tab for this target");
@@ -109,9 +218,13 @@ function selectedTargets() {
 function availability() {
   const none = !selectedTargets().length;
   for (const id of ["start", "stop", "restart"]) $(id).disabled = working || none;
-  for (const id of ["set-frequency", "get-frequency", "general-status", "calibrate", "reboot", "scan", "procedure-status", "cancel", "monitor"])
-    $(id).disabled = working || !current || !!session?.exclusive ||
+  for (const control of $("receiver-controls").querySelectorAll("button, input, select"))
+    control.disabled = working || !current || current.model !== RECEIVER_SPEC.model || !!session?.exclusive ||
       !!(operationsSession && operationsSession.state !== "connected");
+  $("cancel").disabled ||= !RECEIVER_SPEC.procedures[$("procedure").value]?.cancellation.supported;
+  if (current?.kind === "hardware") {
+    for (const control of $("receiver-controls").querySelectorAll("[data-modifying]")) control.disabled = true;
+  }
   $("operations-disconnect").disabled = working || !operationsSession;
   $("operations-reconnect").disabled = working || !current || !!session?.exclusive;
   $("connect").disabled = working || !current;
@@ -168,6 +281,7 @@ function renderOperationsState() {
   text("operations-state", session?.exclusive ? "Suspended — disconnect the exclusive console to resume operations" :
     operationsSession ? operationsSession.state + " · automatic library connection" :
       "disconnected — connects automatically on your next operation");
+  $("physical-write-policy").hidden = current?.kind !== "hardware";
   if (session?.exclusive || (operationsSession && operationsSession.state !== "connected")) $("monitor").checked = false;
 }
 function rememberSession(history) {
@@ -456,10 +570,9 @@ button("operations-disconnect", disconnectOperations);
 button("operations-reconnect", async () => { await disconnectOperations(); await connectOperations(); });
 button("start", () => manage("start")); button("stop", () => manage("stop")); button("restart", () => manage("restart"));
 button("refresh-admin", async () => { await refreshManagement(); await refreshAdmin(); });
-button("set-frequency", () => request("set", {name:"frequency", value:number("frequency"), unit:"GHz"}));
-button("get-frequency", () => request("get", {name:"frequency"})); button("general-status", () => request("status"));
-button("calibrate", () => { $("procedure").value = "calibrate"; return request("run", {name:"calibrate"}); });
-button("scan", () => { $("procedure").value = "scan"; return request("run", {name:"scan", start:number("scan-start"), stop:number("scan-stop"), unit:"GHz", dwell_ms:number("scan-dwell")}); });
+buildReceiverControls();
+button("general-status", () => request("status"));
+$("procedure").addEventListener("change", availability);
 button("procedure-status", () => request("status", {name:$("procedure").value})); button("cancel", () => request("cancel", {name:$("procedure").value}));
 button("reboot", () => confirm("Reboot hardware? Existing TCP connections will close and running work may be lost.") ? request("reboot") : undefined);
 button("send-literal", async () => {

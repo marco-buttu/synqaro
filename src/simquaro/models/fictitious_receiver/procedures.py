@@ -7,6 +7,7 @@ from decimal import Decimal
 from synqaro_protocol.errors import ProtocolError
 from synqaro_protocol.codec import NumericToken
 from .validation import parse_frequency
+from synqaro_protocol.profiles._receiver_contract_data import DATA
 
 
 @dataclass
@@ -34,7 +35,7 @@ class _Attempt:
 class Procedures:
     def __init__(self, model):
         self.model = model
-        self.attempts = {name: _Attempt(name) for name in ("calibrate", "scan")}
+        self.attempts = {name: _Attempt(name) for name in DATA["procedures"]}
         self.active: _Attempt | None = None
 
     def status(self, name):
@@ -46,7 +47,8 @@ class Procedures:
                 result[key] = value
         if name == "scan" and attempt.state not in ("unknown", "never_started"):
             result.update(points_completed=NumericToken(str(attempt.points_completed)),
-                          points_total=NumericToken("10"), progress=NumericToken(str(attempt.points_completed * 10)))
+                          points_total=NumericToken(str(self.model.config.scan_points)),
+                          progress=NumericToken(str(attempt.points_completed * 100 // self.model.config.scan_points)))
         return result
 
     def start(self, name, request, session_id, targets, dwell_ms):

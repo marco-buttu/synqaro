@@ -1,0 +1,226 @@
+{
+  "revision": "0.2",
+  "scope": "Relevant executable test references; not a proof of complete coverage or a record of execution. See docs/fictitious_receiver_contract_application.md for limitations.",
+  "scenarios": {
+    "descriptor": {
+      "requirements": [
+        "identity",
+        "firmware_scope",
+        "wire_limits"
+      ],
+      "tests": [
+        "tests/simquaro/test_receiver.py::ReceiverTests::test_descriptor_unknown_cold_history_and_known_fresh_observation",
+        "tests/simquaro/test_conformance.py::ConformanceTests::test_descriptor_rejects_missing_wrong_type_incompatible_and_incoherent_before_write",
+        "tests/test_receiver_contract.py::ReceiverContractTests::test_descriptor_and_capabilities_match_yaml",
+        "tests/web/test_api.py::ApiTests::test_real_hardware_connection_reports_remote_loss_and_can_reconnect"
+      ]
+    },
+    "rounding": {
+      "requirements": [
+        "frequency_range",
+        "frequency_write"
+      ],
+      "tests": [
+        "tests/simquaro/test_protocol.py::FrequencyTests::test_exact_grid_rounding_and_equivalent_spellings",
+        "tests/simquaro/test_protocol.py::FrequencyTests::test_original_range_is_checked_before_rounding",
+        "tests/simquaro/test_protocol.py::FrequencyTests::test_wrong_types_are_not_implicitly_converted",
+        "tests/simquaro/test_protocol.py::FrequencyTests::test_huge_exponent_is_explicitly_rejected_without_expanding_it",
+        "tests/web/test_browser.py::BrowserTests::test_contract_controls_validate_before_sending_and_preserve_exact_rounding"
+      ]
+    },
+    "same_frequency": {
+      "requirements": [
+        "frequency_write",
+        "uncertain_calibration"
+      ],
+      "tests": [
+        "tests/simquaro/test_procedures.py::ProcedureTests::test_same_frequency_failure_invalidates_calibration_until_recalibrated"
+      ]
+    },
+    "read_and_lock_failure": {
+      "requirements": [
+        "frequency_read",
+        "frequency_write",
+        "unverified_reason",
+        "fault_diagnostics"
+      ],
+      "tests": [
+        "tests/simquaro/test_receiver.py::ReceiverTests::test_failed_lock_never_reports_requested_value_as_verified",
+        "tests/simquaro/test_receiver.py::ReceiverTests::test_delayed_tuning_action_beyond_one_second_cannot_succeed",
+        "tests/simquaro/test_recovery.py::ReceiverRecoveryTests::test_read_failure_is_not_calibration_unavailability_or_guessed_frequency"
+      ]
+    },
+    "same_frequency_failed": {
+      "requirements": [
+        "uncertain_calibration",
+        "frequency_write",
+        "general_status"
+      ],
+      "tests": [
+        "tests/simquaro/test_procedures.py::ProcedureTests::test_same_frequency_failure_invalidates_calibration_until_recalibrated"
+      ]
+    },
+    "calibrate_success": {
+      "requirements": [
+        "calibration",
+        "frequency_read",
+        "concurrency",
+        "procedure_history"
+      ],
+      "tests": [
+        "tests/simquaro/test_procedures.py::ProcedureTests::test_calibration_registers_busy_and_restores_before_success",
+        "tests/simquaro/test_procedures.py::ProcedureTests::test_reference_phase_hook_occurs_once_after_acceptance_not_polling"
+      ]
+    },
+    "calibrate_failure": {
+      "requirements": [
+        "calibration",
+        "fault_diagnostics"
+      ],
+      "tests": [
+        "tests/simquaro/test_procedures.py::ProcedureTests::test_restoration_failure_is_failed_not_calibrated",
+        "tests/simquaro/test_recovery.py::ReceiverRecoveryTests::test_reference_failure_after_acceptance_remains_failed_after_clearing"
+      ]
+    },
+    "scan_sequence": {
+      "requirements": [
+        "scan_parameters",
+        "scan_execution"
+      ],
+      "tests": [
+        "tests/simquaro/test_procedures.py::ProcedureTests::test_ten_exact_points_both_directions_and_hold_before_counting",
+        "tests/simquaro/test_procedures.py::ProcedureTests::test_minimum_span_has_ten_distinct_targets"
+      ]
+    },
+    "scan_reject": {
+      "requirements": [
+        "scan_parameters",
+        "procedure_history"
+      ],
+      "tests": [
+        "tests/simquaro/test_procedures.py::ProcedureTests::test_scan_validation_has_no_effect_and_retains_previous_outcome",
+        "tests/web/test_browser.py::BrowserTests::test_contract_controls_validate_before_sending_and_preserve_exact_rounding"
+      ]
+    },
+    "scan_failure": {
+      "requirements": [
+        "scan_execution",
+        "fault_diagnostics"
+      ],
+      "tests": [
+        "tests/simquaro/test_procedures.py::ProcedureTests::test_tuning_failure_stops_scan_without_skipping_point",
+        "tests/simquaro/test_procedures.py::ProcedureTests::test_earlier_scan_hold_failure_is_not_credited_or_skipped",
+        "tests/simquaro/test_procedures.py::ProcedureTests::test_final_scan_hold_requires_surviving_verified_frequency"
+      ]
+    },
+    "cancel_phases": {
+      "requirements": [
+        "controlled_stop",
+        "calibration",
+        "scan_execution"
+      ],
+      "tests": [
+        "tests/simquaro/test_procedures.py::ProcedureTests::test_scan_cancel_confirmed_during_hold_retains_verified_value_and_outcome",
+        "tests/simquaro/test_procedures.py::ProcedureTests::test_deadline_can_stop_non_cancellable_stalled_finalization",
+        "tests/web/test_browser.py::BrowserTests::test_scan_cancel_reboot_and_explicit_modifying_suite"
+      ]
+    },
+    "stop_deadlines": {
+      "requirements": [
+        "controlled_stop",
+        "general_status"
+      ],
+      "tests": [
+        "tests/simquaro/test_procedures.py::ProcedureTests::test_repeated_cancel_preserves_deadline_and_late_verified_stop_recovers",
+        "tests/simquaro/test_procedures.py::ProcedureTests::test_execution_deadlines_are_independent_of_utc_and_add_stop_budget",
+        "tests/simquaro/test_procedures.py::ProcedureTests::test_stop_deadline_is_enforced_even_when_confirmation_action_is_delayed"
+      ]
+    },
+    "completion_race": {
+      "requirements": [
+        "controlled_stop",
+        "procedure_history"
+      ],
+      "tests": [
+        "tests/simquaro/test_procedures.py::ProcedureTests::test_cancel_completion_race_records_actual_success_and_late_cancel_rejects",
+        "tests/simquaro/test_procedures.py::ProcedureTests::test_natural_completion_after_execution_timeout_remains_failed"
+      ]
+    },
+    "shared_clients": {
+      "requirements": [
+        "concurrency",
+        "short_set_overlap",
+        "procedure_history"
+      ],
+      "tests": [
+        "tests/simquaro/test_server.py::ServerTests::test_shared_clients_reject_overlap_and_cancel_after_disconnect",
+        "tests/simquaro/test_server.py::ServerTests::test_status_during_tuning_and_disconnection_preserves_actions"
+      ]
+    },
+    "clock_and_health": {
+      "requirements": [
+        "general_status",
+        "time_quality",
+        "fault_diagnostics"
+      ],
+      "tests": [
+        "tests/simquaro/test_receiver.py::ReceiverTests::test_clock_faults_coexist_and_historical_utc_survives_recovery",
+        "tests/simquaro/test_procedures.py::ProcedureTests::test_untrusted_completion_omits_only_new_utc_timestamp"
+      ]
+    },
+    "history_and_reboot": {
+      "requirements": [
+        "reboot",
+        "procedure_history",
+        "general_status"
+      ],
+      "tests": [
+        "tests/simquaro/test_server.py::ServerTests::test_reboot_complete_acceptance_before_eof_same_port_and_faults",
+        "tests/simquaro/test_procedures.py::ProcedureTests::test_close_and_reboot_do_not_fabricate_cancelled_outcomes",
+        "tests/simquaro/test_recovery.py::ReceiverRecoveryTests::test_reconnect_keeps_boot_reboot_changes_it_and_preserves_injections"
+      ]
+    },
+    "wire_boundaries": {
+      "requirements": [
+        "wire_limits",
+        "fault_diagnostics"
+      ],
+      "tests": [
+        "tests/simquaro/test_server.py::ServerTests::test_split_coalesced_and_independent_connections",
+        "tests/simquaro/test_server.py::ServerTests::test_id_admission_precedes_validation_and_overload",
+        "tests/simquaro/test_server.py::ServerTests::test_exact_frame_boundary_and_oversize_close",
+        "tests/simquaro/test_server.py::ServerTests::test_first_byte_deadline_does_not_extend_with_trickle_or_utc",
+        "tests/simquaro/test_server.py::ServerTests::test_four_delayed_pending_fifth_rejected_and_consumed",
+        "tests/simquaro/test_conformance.py::ConformanceTests::test_reordered_fragmented_coalesced_replies_correlate_independently"
+      ]
+    },
+    "lost_outcomes": {
+      "requirements": [
+        "client_recovery",
+        "frequency_read",
+        "procedure_history",
+        "reboot"
+      ],
+      "tests": [
+        "tests/simquaro/test_recovery.py::ReceiverRecoveryTests::test_applied_set_lost_reply_reacquires_actual_frequency",
+        "tests/simquaro/test_recovery.py::ReceiverRecoveryTests::test_lost_calibration_and_scan_acceptance_queries_named_state_without_restart",
+        "tests/simquaro/test_recovery.py::ReceiverRecoveryTests::test_lost_read_next_get_is_new_acquisition_after_external_change",
+        "tests/simquaro/test_recovery.py::RecoveryTests::test_lost_set_coalesces_probe_refresh_blocks_writes_and_never_replays",
+        "tests/simquaro/test_recovery.py::RecoveryTests::test_failed_probe_reconnects_discovers_and_refreshes_without_replay",
+        "tests/simquaro/test_recovery.py::RecoveryTests::test_reconnect_attempts_have_two_second_limit_five_second_pause_and_cancel",
+        "tests/simquaro/test_wire_faults.py::WireFaultTests::test_lost_reboot_acceptance_still_reboots"
+      ]
+    },
+    "simulator_boundary": {
+      "requirements": [
+        "simulator_scope"
+      ],
+      "tests": [
+        "tests/simquaro/test_model_boundaries.py::ModelBoundaryTests::test_registered_model_configuration_and_bootstrap_are_not_receiver_specific",
+        "tests/simquaro/test_model_boundaries.py::ModelBoundaryTests::test_fault_catalog_is_selected_per_model_and_does_not_leak",
+        "tests/simquaro/test_model_boundaries.py::ModelBoundaryTests::test_only_declared_model_events_release_domain_reorder_holds",
+        "tests/simquaro/test_receiver.py::ReceiverTests::test_independent_models_reboot_and_external_fault_continuity"
+      ]
+    }
+  }
+}

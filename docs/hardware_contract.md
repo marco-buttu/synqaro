@@ -23,7 +23,7 @@ The agent reads the available specifications, asks for missing information and p
 
 The [hardware integration workflow](hardware_integration_workflow.md) defines the agent's required reading, questions, completeness review and approval process. It also explains how to handle requirements that would change Synqaro itself. Such changes require separate maintainer approval; they are not automatically authorized by approving a hardware contract.
 
-The [contract format and authoring checks](../contracts/README.md) are available now. They validate structure and selected consistency rules, not semantic completeness or approval. The [receiver contract](../contracts/models/fictitious_receiver.yaml), revision 0.2, is approved; the contract-driven GUI remains subsequent work tracked in [issue #38](https://github.com/marco-buttu/synqaro/issues/38).
+The [contract format and authoring checks](../contracts/README.md) are available now. They validate structure and selected consistency rules, not semantic completeness or approval. The [receiver contract](../contracts/models/fictitious_receiver.yaml), revision 0.2, is approved; the [first contract-driven application and its verification status](fictitious_receiver_contract_application.md) are tracked in [issue #38](https://github.com/marco-buttu/synqaro/issues/38).
 
 Instructions for interacting with the agent will be added when that interface is available.
 

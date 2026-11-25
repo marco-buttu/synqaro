@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 AVAILABLE = all(importlib.util.find_spec(name) for name in ('yaml', 'jsonschema'))
 
 
-@unittest.skipUnless(AVAILABLE, 'install development extra: pip install -e ".[contracts]"')
+@unittest.skipUnless(AVAILABLE, 'install development dependencies: bash install.sh --dev')
 class ContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

@@ -192,6 +192,18 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.store.save(entries, expected_revision=self.snapshot.revision)
         response = await self.post('/api/sessions', {'target':'physical-b','mode':'managed','persistent':True})
         self.assertEqual(response.status_code, 200, response.text)
+        sid = response.json()["result"]["id"]
+        # Even a perfectly matching simulator descriptor presented as physical hardware
+        # is not verified firmware. Managed operations may read, but cannot mutate.
+        read = await self.post(f"/api/sessions/{sid}/requests", {"verb":"get", "fields":{"name":"frequency"}})
+        self.assertEqual(read.json()["result"]["fields"]["value"], {"number":"5"})
+        for verb, fields in (("set", {"name":"frequency", "value":{"number":"6"}, "unit":"GHz"}),
+                             ("run", {"name":"calibrate"}), ("cancel", {"name":"scan"}), ("reboot", {})):
+            blocked = await self.post(f"/api/sessions/{sid}/requests", {"verb":verb, "fields":fields})
+            self.assertEqual(blocked.json()["error"]["code"], "READ_ONLY_CLIENT", blocked.text)
+            self.assertFalse(blocked.json()["error"]["uncertain"])
+        self.assertEqual(model.snapshot()["actual"]["frequency"], "5")
+        self.assertFalse(model.snapshot()["actual"]["procedure_active"])
         rows = (await self.client.get('/api/management')).json()['result']['targets']
         self.assertEqual(next(r for r in rows if r['name']=='physical-b')['state'], 'connected')
         await server.close()

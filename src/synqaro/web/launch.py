@@ -12,7 +12,7 @@ def launch(store, *, port, no_browser, runtime_root, emit):
     except ImportError:
         emit("gui.error", error={"code": "WEB_EXTRA_REQUIRED",
              "message": "The GUI needs the optional web packages in this Python environment.",
-             "actions": ["From the repository, inside its virtual environment: python -m pip install -e '.[web]'",
+             "actions": ["From the repository: bash install.sh --dev for development, or bash install.sh for the user-local application.",
                          ["synqaro", "gui"]]})
         return 1
     url = f"http://127.0.0.1:{port}"

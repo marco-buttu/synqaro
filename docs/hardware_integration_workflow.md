@@ -45,7 +45,10 @@ The [versioned schema and authoring validator](../contracts/README.md) are avail
 The [fictitious receiver contract](../contracts/models/fictitious_receiver.yaml),
 revision 0.2, is approved; implementation migration remains tracked in
 [issue #38](https://github.com/marco-buttu/synqaro/issues/38).
-Do not claim that current code, tests or GUI are already generated from one contract.
+See the [first application and verification record](fictitious_receiver_contract_application.md).
+The receiver-specific generator projects structured data; behavioral implementation
+and independent test oracles remain explicit. This is not a generic generator for
+other hardware models.
 
 At the start of an integration, read:
 
@@ -360,6 +363,7 @@ physical-hardware behavior; identify the checks still needed on real equipment.
 For the current fictitious receiver, the [approved contract](../contracts/models/fictitious_receiver.yaml)
 revision 0.2 is the receiver-specific behavioral reference, together with the shared
 rules in [Hardware Protocol](hardware_protocol.md). Its approval is recorded in
-[the review](fictitious_receiver_contract_review.md#formal-approval). Implementation
-and GUI/test adaptation remain section 5 of issue #38; approval does not establish
+[the review](fictitious_receiver_contract_review.md#formal-approval). Implementation and GUI/test adaptation are tracked in section 5 of issue #38;
+see the [application record](fictitious_receiver_contract_application.md) for
+actual verification results and remaining limitations. Approval does not establish
 implementation conformance.
