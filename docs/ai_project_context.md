@@ -231,6 +231,26 @@ Do **not** introduce orchestration initially. For each Device, define and valida
 
 The purpose is to learn what the common core actually needs before designing a higher layer.
 
+#### Implementation roadmap and deferred framework evaluation
+
+The initial implementation follows this sequence:
+
+1. [Implement the fictitious receiver Device](https://github.com/marco-buttu/synqaro/issues/47).
+2. [Define and implement the fictitious backend hardware](https://github.com/marco-buttu/synqaro/issues/48).
+3. [Implement the fictitious backend Device](https://github.com/marco-buttu/synqaro/issues/49).
+4. [Evaluate the need for a common Device framework](https://github.com/marco-buttu/synqaro/issues/50).
+
+Implement both Devices before evaluating the need for a common Device framework.
+
+The evaluation must be based on concrete implementation experience,
+demonstrated duplication, shared responsibilities, and maintainability costs.
+
+A small shared library, independent Device implementations, or a lightweight
+framework are all acceptable outcomes. Do not assume that a framework is necessary.
+
+Avoid introducing speculative abstractions before this evaluation and obtain
+explicit maintainer approval before implementing shared infrastructure.
+
 ### Phase 2: integrated simulated system
 
 Run the three Devices together against simulators. Demonstrate reproducible startup, state discovery, telemetry, command correlation, injected failures, diagnosis, and recovery without physical hardware.
