@@ -8,7 +8,7 @@
 
 **Related authoritative document:** [Synqaro Project Vision v0.9](project_vision.md)
 
-**Current Device architecture:** [Synqaro Device Architecture](device.md)
+**Current Device architecture:** [Synqaro Device Architecture](device.md) and [Device public interface](device_public_interface.md) (issue #45; agreed conventions and explicit remaining questions).
 
 ## 1. How to use this document
 
@@ -354,10 +354,9 @@ These decisions should be resolved through focused prototypes, measurements, and
 
 ### Core and communication
 
-- What exact command, state, long-running operation, result, and error envelopes work for the three prototype Devices?
-- What quality vocabulary, timestamp/unit policy, and schema-compatibility rules apply to the generated OpenAPI/JSON Schema APIs and NATS publications?
-- What NATS subject conventions, authorization boundaries, and recovery rules are required for missed ephemeral state?
-- When do state publications use complete snapshots/groups rather than deltas?
+- What exact schemas, clock precision/synchronization and compatibility rules complete the agreed public-interface conventions?
+- What NATS authorization boundaries and race-free session/snapshot synchronization are required beyond the agreed subject and no-replay rules?
+- What measured snapshot/group sizes and rates justify reconsidering the initial self-contained state representation?
 - Which orchestration mechanisms belong in optional common services, and which remain in domain layers?
 - How should registry leases, cached resolution, high availability, process supervision, packaging, and deployment be implemented?
 - What benchmark result would justify Go Devices, gRPC/Protobuf, or binary payload encoding instead of the prototype baseline?

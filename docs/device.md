@@ -4,7 +4,7 @@
 
 **Scope:** Device boundary, lifecycle, communication, live state, persistence boundary, configuration, safety, validation, and initial prototype topology
 
-**Related documents:** [Project Vision](project_vision.md) and [AI Project Context and Handoff](ai_project_context.md)
+**Related documents:** [Project Vision](project_vision.md), [AI Project Context and Handoff](ai_project_context.md), and [Device public interface](device_public_interface.md) (issue #45, agreed public-interface refinements).
 
 ## 1. Decision status and intent
 
@@ -96,7 +96,7 @@ Its externally visible state must distinguish at least:
 - invalid hardware data; and
 - recovery or reconnection in progress.
 
-The exact shared error and quality vocabulary is an open question, but these conditions must not be conflated.
+The shared error and quality vocabulary is defined in the [public interface](device_public_interface.md#3-health-and-diagnostics); these conditions must not be conflated.
 
 ## 5. Prototype technology baseline
 
@@ -118,7 +118,7 @@ The following are **settled prototype decisions** unless marked otherwise.
 
 ## 6. Identity, discovery, and liveness
 
-Devices use stable logical names, for example `mount.srt.main`. A central registry acts as a directory:
+Devices use stable logical names, for example `antenna-1`, with a separate category such as `mount`. The [public interface](device_public_interface.md#1-identity-discovery-and-boundaries) defines the naming and session conventions. A central registry acts as a directory:
 
 1. a Device registers its logical identity and current HTTP endpoint;
 2. it renews an application-level liveness lease;
@@ -144,9 +144,9 @@ Commands are direct typed HTTP calls to the Device that owns the target hardware
 
 Each Device rechecks its own current state at command execution time. A caller may have made a decision using distributed state, but that state can become stale between decision and execution.
 
-A short operation may complete in its HTTP response. A long operation returns an operation identity and subsequently publishes progress and the final result; query access may also be provided. Operation and correlation identities must preserve diagnostic causality across the direct request, hardware interaction, progress, result, alarm, and audit history.
+A short operation completes in its HTTP response when the outcome is known. A long operation returns HTTP 202 and a client-generated operation identity, subsequently publishes meaningful progress and results, and provides query access. Both short and long hardware-modifying operations use the bounded in-memory operation register. Operation and correlation identities must preserve diagnostic causality across the direct request, hardware interaction, progress, result, alarm, and audit history.
 
-The exact command, operation, result, and error envelopes remain open. PostgreSQL is not used as a command queue.
+The [public interface](device_public_interface.md#4-commands-and-operation-lifecycle) defines duplicate rejection, retention, uncertainty, cancellation and error conventions; exact schema details remain open. PostgreSQL is not used as a command queue.
 
 ## 8. Live state distribution
 
@@ -176,7 +176,7 @@ Core NATS has at-most-once delivery. That is acceptable for continuously superse
 
 Alarms, command results, audit records, and other non-lossy events require a durable path. The exact division between NATS JetStream and PostgreSQL remains open.
 
-**Working hypothesis:** for small, moderate-rate state, publish complete self-contained snapshots or coherent groups rather than requiring consumers to reconstruct state from deltas. Measurements may justify another representation.
+**Settled prototype decision:** publish complete self-contained observations or coherent groups for current state, including unchanged values periodically. Measurements may justify reconsidering this decision for other data classes.
 
 Each state publication must preserve:
 
@@ -190,7 +190,7 @@ Each state publication must preserve:
 - quality or validity; and
 - relevant error or alarm context.
 
-Exact NATS subject names are open. Illustrative names such as `state.mount.srt.main.position` may be used in prototypes or discussion, but are not final conventions.
+The [public interface](device_public_interface.md#5-core-nats-publication) specifies subjects (e.g. `state.mount.antenna-1.position`), per-subject session sequences, configuration revision and the no-replay recovery boundary. The prior dotted logical name examples are superseded.
 
 ## 9. State Service, external edge, and persistence
 
@@ -251,9 +251,9 @@ A read-only physical measurement can have writable monitoring policy: LNA temper
 
 Persist Device configuration across restart, but distinguish persistence from historical evidence of actual use. The system must be able to relate incident-time software deployments/builds, hardware/firmware identity, descriptor or approved profile, and the effective configuration revision and content. A Git commit alone does not prove when code was deployed or a file applied. Distinguish requested, applied, and saved changes; preserve activation evidence and time provenance, and relate measurements/events to the effective revision. Retain referenced artifacts/content rather than hashes alone. Persisting policy does not restore stale measurements, prove prior procedure success, or authorize replay of hardware commands.
 
-The concrete configuration format/update API, consistent multi-setting activation, storage and audit mechanism, revision/retention details, and crash/network/storage durability guarantees remain open. In particular, the asynchronous selected-history path in section 9 is not already a guarantee of lossless configuration audit. Requirements for local durable buffering versus explicitly incomplete history must be decided before such guarantees are advertised. No new central configuration service or direct Device-to-PostgreSQL dependency is introduced by this requirement.
+The [public interface](device_public_interface.md#6-device-configuration) defines per-instance JSON, atomic update, optimistic concurrency, persisted revision/hash and notifications. Historical storage and audit mechanisms, exact crash/network/storage durability guarantees and failure recovery details remain open. In particular, the asynchronous selected-history path in section 9 is not already a guarantee of lossless configuration audit. Requirements for local durable buffering versus explicitly incomplete history must be decided before such guarantees are advertised. No new central configuration service or direct Device-to-PostgreSQL dependency is introduced by this requirement.
 
-See [Hardware Protocol](hardware_protocol.md) for the approved prototype profile, staged recovery, and the explicit deferred configuration/history topics. The next implementation step is the standalone hardware simulator and conformance tests, not completion of the whole configuration/history architecture.
+See [Hardware Protocol](hardware_protocol.md) for the approved prototype profile, staged recovery, and the explicit deferred configuration/history topics. The standalone receiver simulator and hardware conformance work are recorded in the [contract application](fictitious_receiver_contract_application.md). The next implementation step is the standalone receiver Device, not completion of the whole configuration/history architecture.
 
 ## 11. Health, safety, and timing semantics
 
@@ -341,13 +341,12 @@ Safe real-hardware conformance is a distinct acceptance step and requires the au
 
 The following are deliberately unresolved:
 
-- exact command, state, operation, result, and error envelopes;
-- the shared quality/validity vocabulary;
-- timestamp clock, precision, synchronization, and unit policy;
-- NATS subject naming, account boundaries, and authorization;
+- exact command, state, operation, result, and error schema details beyond the agreed conventions;
+- timestamp precision, synchronization, and local clock trust representation;
+- NATS account boundaries and authorization;
 - schema evolution and compatibility rules;
-- snapshot/group versus delta thresholds and representation;
-- recovery after missed ephemeral state messages;
+- measured snapshot/group size thresholds and detailed session/snapshot resynchronization;
+- remaining configuration failure, canonicalization and operation retention edge cases (see the [public interface open questions](device_public_interface.md#10-remaining-open-questions-and-issue-45-review));
 - the durability split between JetStream and PostgreSQL;
 - telemetry selection, downsampling, retention, and query policy;
 - registry implementation, lease timing, cache behavior, and high availability;
