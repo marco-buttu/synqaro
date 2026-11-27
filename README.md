@@ -17,7 +17,7 @@ Synqaro’s development approach is **bottom-up and AI-driven**: it starts with 
 
 2. **[Implement and verify hardware communication](docs/getting_started.md).** At the user’s request, the agent develops the firmware where applicable, a hardware simulator, reusable communication libraries, and automated tests. The user explores the simulator through a GUI, while automated tests systematically exercise the specified behavior and failure scenarios. Tests are checked against the agreed contract; real firmware and hardware are also verified when available and safe to test.
 
-3. **Implement the Device.** The agent builds the Device using the communication libraries and verifies its commands, state handling, and error reporting. The Device can be exercised independently against the simulator and, subsequently, the real hardware.
+3. **Implement the Device.** The agent builds the Device using the communication libraries and the agreed [Device public interface](docs/device_public_interface.md), and verifies its commands, state handling, and error reporting. The Device can be exercised independently against the simulator and, subsequently, the real hardware.
 
 4. **Add coordination where needed.** The agent implements or extends the software that coordinates the Device with other Devices and subsystems, according to the user’s operational requirements.
 
@@ -85,6 +85,7 @@ Start with the first two steps of the development workflow:
 
 - [Hardware Protocol](docs/hardware_protocol.md)
 - [Device Architecture](docs/device.md)
+- [Device public interface](docs/device_public_interface.md)
 
 ### Development and testing
 

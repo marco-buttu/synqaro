@@ -19,6 +19,19 @@ Synqaro's simplicity and maintainability. Hardware-contract approval does not
 authorize changes to the framework or shared protocol: those require a separate
 proposal and maintainer approval as described in the workflow.
 
+## Device development
+
+Before designing, implementing or changing a Device public interface, read
+[Device architecture](docs/device.md) and the agreed
+[Device public interface](docs/device_public_interface.md), especially the agent
+instructions and open questions. Read the applicable system conventions,
+approved hardware contract, selected protocol and verification evidence. Propose
+missing system conventions (including domain-specific UCUM units) for maintainer
+approval. Do not promote illustrative schemas or unresolved questions to approved
+requirements, change shared interfaces without approval, or invent hardware
+capabilities. Keep the common interface minimal and model-specific behavior typed
+and discoverable; verify it with independent tests.
+
 ## Development tests
 
 From the repository root, run `bash install.sh --dev` to prepare the local
